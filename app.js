@@ -1,6 +1,7 @@
 (function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);var f=new Error("Cannot find module '"+o+"'");throw f.code="MODULE_NOT_FOUND",f}var l=n[o]={exports:{}};t[o][0].call(l.exports,function(e){var n=t[o][1][e];return s(n?n:e)},l,l.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
 (function (Buffer){
-var IPFS = require('ipfs');
+var IPFS = require('ipfs'),
+    SimplePeer = require('simple-peer');
 
 function repo () {
   return 'ipfs/yjs-demo/' + Math.random()
@@ -12,33 +13,69 @@ var ipfs = new IPFS({
 		pubsub: true
 	}
 });
+
 var connected = false,
 	id = null,
-	chat = document.getElementById('chat');
+	chat = document.getElementById('chat'),
+    peerConnected = false,
+    ipfsConnected = false,
+    peer;
 
 ipfs.on('ready', () => ipfs.id((err, info) => {
 	if(err) throw err;
 	id = info.id;
 	connected = true;
+    ipfsConnected = true;
 	console.log('got address', info.id);
 	ipfs.pubsub.subscribe('room', (msg) => {
-		if(msg.from.toString() != info.id) chat.innerHTML = chat.innerHTML + 'peer: ' + msg.data.toString() + '<br/>';
+        var offer = JSON.parse(msg.data.toString());
+        console.log('got offer:', offer);
+		if(msg.from.toString() != info.id) {
+            peer.signal(offer);
+            if(offer.type != 'offer' && offer.type != 'answer') chat.innerHTML = chat.innerHTML + 'peer: ' + offer.toString() + '<br/>';
+        }
 	});
+
+    peer = new SimplePeer({ initiator: location.hash === '#1', trickle: false });
+    peer.on('error', function (err) { console.log('error', err) });
+
+    peer.on('signal', function (data) {
+        //chat.innerHTML += '<br/>SIGNAL:' + JSON.stringify(data);
+        var checkPeer = setInterval(() => {
+            ipfs.pubsub.peers('room', (err, peers) => {
+                console.log(peers);
+                if(peers.length) {
+                    ipfs.pubsub.publish('room', new Buffer(JSON.stringify(data)), (err) => {
+                        if(err) console.error(err);
+                        clearInterval(checkPeer);
+                    });
+                }
+            });
+        }, 1000);
+    });
+
+    peer.on('connect', function () {
+        connected = true;
+        console.log('CONNECT');
+    });
+
+    peer.on('data', function (data) {
+        chat.innerHTML += '<br/>peer: ' + data;
+    });
 }));
 
 send = (ev) => {
 	if(ev.keyCode == 13) {
-		chat.innerHTML = chat.innerHTML + 'me: ' + ev.target.value + '<br/>';
+		chat.innerHTML += 'me: ' + ev.target.value + '<br/>';
 		if(connected) {
 			console.log('sent:', ev.target.value);
-			ipfs.pubsub.publish('room', new Buffer(ev.target.value), (err) => {
-				if(err) console.error(err);
-			});
+			peer.send(ev.target.value);
 		} else console.log('not connected...');
 	}
 }
+
 }).call(this,require("buffer").Buffer)
-},{"buffer":1013,"ipfs":389}],2:[function(require,module,exports){
+},{"buffer":718,"ipfs":291,"simple-peer":680}],2:[function(require,module,exports){
 module.exports = after
 
 function after(count, callback, err_cb) {
@@ -110,7 +147,7 @@ asn1.constants = require('./asn1/constants');
 asn1.decoders = require('./asn1/decoders');
 asn1.encoders = require('./asn1/encoders');
 
-},{"./asn1/api":5,"./asn1/base":7,"./asn1/constants":11,"./asn1/decoders":13,"./asn1/encoders":16,"bn.js":29}],5:[function(require,module,exports){
+},{"./asn1/api":5,"./asn1/base":7,"./asn1/constants":11,"./asn1/decoders":13,"./asn1/encoders":16,"bn.js":70}],5:[function(require,module,exports){
 var asn1 = require('../asn1');
 var inherits = require('inherits');
 
@@ -173,7 +210,7 @@ Entity.prototype.encode = function encode(data, enc, /* internal */ reporter) {
   return this._getEncoder(enc).encode(data, reporter);
 };
 
-},{"../asn1":4,"inherits":181,"vm":1051}],6:[function(require,module,exports){
+},{"../asn1":4,"inherits":200,"vm":756}],6:[function(require,module,exports){
 var inherits = require('inherits');
 var Reporter = require('../base').Reporter;
 var Buffer = require('buffer').Buffer;
@@ -291,7 +328,7 @@ EncoderBuffer.prototype.join = function join(out, offset) {
   return out;
 };
 
-},{"../base":7,"buffer":1013,"inherits":181}],7:[function(require,module,exports){
+},{"../base":7,"buffer":718,"inherits":200}],7:[function(require,module,exports){
 var base = exports;
 
 base.Reporter = require('./reporter').Reporter;
@@ -935,7 +972,7 @@ Node.prototype._isPrintstr = function isPrintstr(str) {
   return /^[A-Za-z0-9 '\(\)\+,\-\.\/:=\?]*$/.test(str);
 };
 
-},{"../base":7,"minimalistic-assert":770}],9:[function(require,module,exports){
+},{"../base":7,"minimalistic-assert":512}],9:[function(require,module,exports){
 var inherits = require('inherits');
 
 function Reporter(options) {
@@ -1058,7 +1095,7 @@ ReporterError.prototype.rethrow = function rethrow(msg) {
   return this;
 };
 
-},{"inherits":181}],10:[function(require,module,exports){
+},{"inherits":200}],10:[function(require,module,exports){
 var constants = require('../constants');
 
 exports.tagClass = {
@@ -1449,7 +1486,7 @@ function derDecodeLen(buf, primitive, fail) {
   return len;
 }
 
-},{"../../asn1":4,"inherits":181}],13:[function(require,module,exports){
+},{"../../asn1":4,"inherits":200}],13:[function(require,module,exports){
 var decoders = exports;
 
 decoders.der = require('./der');
@@ -1506,7 +1543,7 @@ PEMDecoder.prototype.decode = function decode(data, options) {
   return DERDecoder.prototype.decode.call(this, input, options);
 };
 
-},{"./der":12,"buffer":1013,"inherits":181}],15:[function(require,module,exports){
+},{"./der":12,"buffer":718,"inherits":200}],15:[function(require,module,exports){
 var inherits = require('inherits');
 var Buffer = require('buffer').Buffer;
 
@@ -1803,7 +1840,7 @@ function encodeTag(tag, primitive, cls, reporter) {
   return res;
 }
 
-},{"../../asn1":4,"buffer":1013,"inherits":181}],16:[function(require,module,exports){
+},{"../../asn1":4,"buffer":718,"inherits":200}],16:[function(require,module,exports){
 var encoders = exports;
 
 encoders.der = require('./der');
@@ -1832,7 +1869,2275 @@ PEMEncoder.prototype.encode = function encode(data, options) {
   return out.join('\n');
 };
 
-},{"./der":15,"inherits":181}],18:[function(require,module,exports){
+},{"./der":15,"inherits":200}],18:[function(require,module,exports){
+'use strict';
+
+Object.defineProperty(exports, "__esModule", {
+    value: true
+});
+exports.default = asyncify;
+
+var _isObject = require('lodash/isObject');
+
+var _isObject2 = _interopRequireDefault(_isObject);
+
+var _initialParams = require('./internal/initialParams');
+
+var _initialParams2 = _interopRequireDefault(_initialParams);
+
+var _setImmediate = require('./internal/setImmediate');
+
+var _setImmediate2 = _interopRequireDefault(_setImmediate);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+/**
+ * Take a sync function and make it async, passing its return value to a
+ * callback. This is useful for plugging sync functions into a waterfall,
+ * series, or other async functions. Any arguments passed to the generated
+ * function will be passed to the wrapped function (except for the final
+ * callback argument). Errors thrown will be passed to the callback.
+ *
+ * If the function passed to `asyncify` returns a Promise, that promises's
+ * resolved/rejected state will be used to call the callback, rather than simply
+ * the synchronous return value.
+ *
+ * This also means you can asyncify ES2017 `async` functions.
+ *
+ * @name asyncify
+ * @static
+ * @memberOf module:Utils
+ * @method
+ * @alias wrapSync
+ * @category Util
+ * @param {Function} func - The synchronous function, or Promise-returning
+ * function to convert to an {@link AsyncFunction}.
+ * @returns {AsyncFunction} An asynchronous wrapper of the `func`. To be
+ * invoked with `(args..., callback)`.
+ * @example
+ *
+ * // passing a regular synchronous function
+ * async.waterfall([
+ *     async.apply(fs.readFile, filename, "utf8"),
+ *     async.asyncify(JSON.parse),
+ *     function (data, next) {
+ *         // data is the result of parsing the text.
+ *         // If there was a parsing error, it would have been caught.
+ *     }
+ * ], callback);
+ *
+ * // passing a function returning a promise
+ * async.waterfall([
+ *     async.apply(fs.readFile, filename, "utf8"),
+ *     async.asyncify(function (contents) {
+ *         return db.model.create(contents);
+ *     }),
+ *     function (model, next) {
+ *         // `model` is the instantiated model object.
+ *         // If there was an error, this function would be skipped.
+ *     }
+ * ], callback);
+ *
+ * // es2017 example, though `asyncify` is not needed if your JS environment
+ * // supports async functions out of the box
+ * var q = async.queue(async.asyncify(async function(file) {
+ *     var intermediateStep = await processFile(file);
+ *     return await somePromise(intermediateStep)
+ * }));
+ *
+ * q.push(files);
+ */
+function asyncify(func) {
+    return (0, _initialParams2.default)(function (args, callback) {
+        var result;
+        try {
+            result = func.apply(this, args);
+        } catch (e) {
+            return callback(e);
+        }
+        // if result is Promise object
+        if ((0, _isObject2.default)(result) && typeof result.then === 'function') {
+            result.then(function (value) {
+                invokeCallback(callback, null, value);
+            }, function (err) {
+                invokeCallback(callback, err.message ? err : new Error(err));
+            });
+        } else {
+            callback(null, result);
+        }
+    });
+}
+
+function invokeCallback(callback, error, value) {
+    try {
+        callback(error, value);
+    } catch (e) {
+        (0, _setImmediate2.default)(rethrow, e);
+    }
+}
+
+function rethrow(error) {
+    throw error;
+}
+module.exports = exports['default'];
+},{"./internal/initialParams":36,"./internal/setImmediate":45,"lodash/isObject":500}],19:[function(require,module,exports){
+'use strict';
+
+Object.defineProperty(exports, "__esModule", {
+    value: true
+});
+exports.default = doUntil;
+
+var _doWhilst = require('./doWhilst');
+
+var _doWhilst2 = _interopRequireDefault(_doWhilst);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+/**
+ * Like ['doWhilst']{@link module:ControlFlow.doWhilst}, except the `test` is inverted. Note the
+ * argument ordering differs from `until`.
+ *
+ * @name doUntil
+ * @static
+ * @memberOf module:ControlFlow
+ * @method
+ * @see [async.doWhilst]{@link module:ControlFlow.doWhilst}
+ * @category Control Flow
+ * @param {AsyncFunction} iteratee - An async function which is called each time
+ * `test` fails. Invoked with (callback).
+ * @param {Function} test - synchronous truth test to perform after each
+ * execution of `iteratee`. Invoked with any non-error callback results of
+ * `iteratee`.
+ * @param {Function} [callback] - A callback which is called after the test
+ * function has passed and repeated execution of `iteratee` has stopped. `callback`
+ * will be passed an error and any arguments passed to the final `iteratee`'s
+ * callback. Invoked with (err, [results]);
+ */
+function doUntil(iteratee, test, callback) {
+    (0, _doWhilst2.default)(iteratee, function () {
+        return !test.apply(this, arguments);
+    }, callback);
+}
+module.exports = exports['default'];
+},{"./doWhilst":20}],20:[function(require,module,exports){
+'use strict';
+
+Object.defineProperty(exports, "__esModule", {
+    value: true
+});
+exports.default = doWhilst;
+
+var _noop = require('lodash/noop');
+
+var _noop2 = _interopRequireDefault(_noop);
+
+var _slice = require('./internal/slice');
+
+var _slice2 = _interopRequireDefault(_slice);
+
+var _onlyOnce = require('./internal/onlyOnce');
+
+var _onlyOnce2 = _interopRequireDefault(_onlyOnce);
+
+var _wrapAsync = require('./internal/wrapAsync');
+
+var _wrapAsync2 = _interopRequireDefault(_wrapAsync);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+/**
+ * The post-check version of [`whilst`]{@link module:ControlFlow.whilst}. To reflect the difference in
+ * the order of operations, the arguments `test` and `iteratee` are switched.
+ *
+ * `doWhilst` is to `whilst` as `do while` is to `while` in plain JavaScript.
+ *
+ * @name doWhilst
+ * @static
+ * @memberOf module:ControlFlow
+ * @method
+ * @see [async.whilst]{@link module:ControlFlow.whilst}
+ * @category Control Flow
+ * @param {AsyncFunction} iteratee - A function which is called each time `test`
+ * passes. Invoked with (callback).
+ * @param {Function} test - synchronous truth test to perform after each
+ * execution of `iteratee`. Invoked with any non-error callback results of
+ * `iteratee`.
+ * @param {Function} [callback] - A callback which is called after the test
+ * function has failed and repeated execution of `iteratee` has stopped.
+ * `callback` will be passed an error and any arguments passed to the final
+ * `iteratee`'s callback. Invoked with (err, [results]);
+ */
+function doWhilst(iteratee, test, callback) {
+    callback = (0, _onlyOnce2.default)(callback || _noop2.default);
+    var _iteratee = (0, _wrapAsync2.default)(iteratee);
+    var next = function (err /*, ...args*/) {
+        if (err) return callback(err);
+        var args = (0, _slice2.default)(arguments, 1);
+        if (test.apply(this, args)) return _iteratee(next);
+        callback.apply(null, [null].concat(args));
+    };
+    _iteratee(next);
+}
+module.exports = exports['default'];
+},{"./internal/onlyOnce":41,"./internal/slice":46,"./internal/wrapAsync":48,"lodash/noop":504}],21:[function(require,module,exports){
+'use strict';
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = eachLimit;
+
+var _eachOf = require('./eachOf');
+
+var _eachOf2 = _interopRequireDefault(_eachOf);
+
+var _withoutIndex = require('./internal/withoutIndex');
+
+var _withoutIndex2 = _interopRequireDefault(_withoutIndex);
+
+var _wrapAsync = require('./internal/wrapAsync');
+
+var _wrapAsync2 = _interopRequireDefault(_wrapAsync);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+/**
+ * Applies the function `iteratee` to each item in `coll`, in parallel.
+ * The `iteratee` is called with an item from the list, and a callback for when
+ * it has finished. If the `iteratee` passes an error to its `callback`, the
+ * main `callback` (for the `each` function) is immediately called with the
+ * error.
+ *
+ * Note, that since this function applies `iteratee` to each item in parallel,
+ * there is no guarantee that the iteratee functions will complete in order.
+ *
+ * @name each
+ * @static
+ * @memberOf module:Collections
+ * @method
+ * @alias forEach
+ * @category Collection
+ * @param {Array|Iterable|Object} coll - A collection to iterate over.
+ * @param {AsyncFunction} iteratee - An async function to apply to
+ * each item in `coll`. Invoked with (item, callback).
+ * The array index is not passed to the iteratee.
+ * If you need the index, use `eachOf`.
+ * @param {Function} [callback] - A callback which is called when all
+ * `iteratee` functions have finished, or an error occurs. Invoked with (err).
+ * @example
+ *
+ * // assuming openFiles is an array of file names and saveFile is a function
+ * // to save the modified contents of that file:
+ *
+ * async.each(openFiles, saveFile, function(err){
+ *   // if any of the saves produced an error, err would equal that error
+ * });
+ *
+ * // assuming openFiles is an array of file names
+ * async.each(openFiles, function(file, callback) {
+ *
+ *     // Perform operation on file here.
+ *     console.log('Processing file ' + file);
+ *
+ *     if( file.length > 32 ) {
+ *       console.log('This file name is too long');
+ *       callback('File name too long');
+ *     } else {
+ *       // Do work to process file here
+ *       console.log('File processed');
+ *       callback();
+ *     }
+ * }, function(err) {
+ *     // if any of the file processing produced an error, err would equal that error
+ *     if( err ) {
+ *       // One of the iterations produced an error.
+ *       // All processing will now stop.
+ *       console.log('A file failed to process');
+ *     } else {
+ *       console.log('All files have been processed successfully');
+ *     }
+ * });
+ */
+function eachLimit(coll, iteratee, callback) {
+  (0, _eachOf2.default)(coll, (0, _withoutIndex2.default)((0, _wrapAsync2.default)(iteratee)), callback);
+}
+module.exports = exports['default'];
+},{"./eachOf":23,"./internal/withoutIndex":47,"./internal/wrapAsync":48}],22:[function(require,module,exports){
+'use strict';
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = eachLimit;
+
+var _eachOfLimit = require('./internal/eachOfLimit');
+
+var _eachOfLimit2 = _interopRequireDefault(_eachOfLimit);
+
+var _withoutIndex = require('./internal/withoutIndex');
+
+var _withoutIndex2 = _interopRequireDefault(_withoutIndex);
+
+var _wrapAsync = require('./internal/wrapAsync');
+
+var _wrapAsync2 = _interopRequireDefault(_wrapAsync);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+/**
+ * The same as [`each`]{@link module:Collections.each} but runs a maximum of `limit` async operations at a time.
+ *
+ * @name eachLimit
+ * @static
+ * @memberOf module:Collections
+ * @method
+ * @see [async.each]{@link module:Collections.each}
+ * @alias forEachLimit
+ * @category Collection
+ * @param {Array|Iterable|Object} coll - A collection to iterate over.
+ * @param {number} limit - The maximum number of async operations at a time.
+ * @param {AsyncFunction} iteratee - An async function to apply to each item in
+ * `coll`.
+ * The array index is not passed to the iteratee.
+ * If you need the index, use `eachOfLimit`.
+ * Invoked with (item, callback).
+ * @param {Function} [callback] - A callback which is called when all
+ * `iteratee` functions have finished, or an error occurs. Invoked with (err).
+ */
+function eachLimit(coll, limit, iteratee, callback) {
+  (0, _eachOfLimit2.default)(limit)(coll, (0, _withoutIndex2.default)((0, _wrapAsync2.default)(iteratee)), callback);
+}
+module.exports = exports['default'];
+},{"./internal/eachOfLimit":33,"./internal/withoutIndex":47,"./internal/wrapAsync":48}],23:[function(require,module,exports){
+'use strict';
+
+Object.defineProperty(exports, "__esModule", {
+    value: true
+});
+
+exports.default = function (coll, iteratee, callback) {
+    var eachOfImplementation = (0, _isArrayLike2.default)(coll) ? eachOfArrayLike : eachOfGeneric;
+    eachOfImplementation(coll, (0, _wrapAsync2.default)(iteratee), callback);
+};
+
+var _isArrayLike = require('lodash/isArrayLike');
+
+var _isArrayLike2 = _interopRequireDefault(_isArrayLike);
+
+var _breakLoop = require('./internal/breakLoop');
+
+var _breakLoop2 = _interopRequireDefault(_breakLoop);
+
+var _eachOfLimit = require('./eachOfLimit');
+
+var _eachOfLimit2 = _interopRequireDefault(_eachOfLimit);
+
+var _doLimit = require('./internal/doLimit');
+
+var _doLimit2 = _interopRequireDefault(_doLimit);
+
+var _noop = require('lodash/noop');
+
+var _noop2 = _interopRequireDefault(_noop);
+
+var _once = require('./internal/once');
+
+var _once2 = _interopRequireDefault(_once);
+
+var _onlyOnce = require('./internal/onlyOnce');
+
+var _onlyOnce2 = _interopRequireDefault(_onlyOnce);
+
+var _wrapAsync = require('./internal/wrapAsync');
+
+var _wrapAsync2 = _interopRequireDefault(_wrapAsync);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+// eachOf implementation optimized for array-likes
+function eachOfArrayLike(coll, iteratee, callback) {
+    callback = (0, _once2.default)(callback || _noop2.default);
+    var index = 0,
+        completed = 0,
+        length = coll.length;
+    if (length === 0) {
+        callback(null);
+    }
+
+    function iteratorCallback(err, value) {
+        if (err) {
+            callback(err);
+        } else if (++completed === length || value === _breakLoop2.default) {
+            callback(null);
+        }
+    }
+
+    for (; index < length; index++) {
+        iteratee(coll[index], index, (0, _onlyOnce2.default)(iteratorCallback));
+    }
+}
+
+// a generic version of eachOf which can handle array, object, and iterator cases.
+var eachOfGeneric = (0, _doLimit2.default)(_eachOfLimit2.default, Infinity);
+
+/**
+ * Like [`each`]{@link module:Collections.each}, except that it passes the key (or index) as the second argument
+ * to the iteratee.
+ *
+ * @name eachOf
+ * @static
+ * @memberOf module:Collections
+ * @method
+ * @alias forEachOf
+ * @category Collection
+ * @see [async.each]{@link module:Collections.each}
+ * @param {Array|Iterable|Object} coll - A collection to iterate over.
+ * @param {AsyncFunction} iteratee - A function to apply to each
+ * item in `coll`.
+ * The `key` is the item's key, or index in the case of an array.
+ * Invoked with (item, key, callback).
+ * @param {Function} [callback] - A callback which is called when all
+ * `iteratee` functions have finished, or an error occurs. Invoked with (err).
+ * @example
+ *
+ * var obj = {dev: "/dev.json", test: "/test.json", prod: "/prod.json"};
+ * var configs = {};
+ *
+ * async.forEachOf(obj, function (value, key, callback) {
+ *     fs.readFile(__dirname + value, "utf8", function (err, data) {
+ *         if (err) return callback(err);
+ *         try {
+ *             configs[key] = JSON.parse(data);
+ *         } catch (e) {
+ *             return callback(e);
+ *         }
+ *         callback();
+ *     });
+ * }, function (err) {
+ *     if (err) console.error(err.message);
+ *     // configs is now a map of JSON data
+ *     doSomethingWith(configs);
+ * });
+ */
+module.exports = exports['default'];
+},{"./eachOfLimit":24,"./internal/breakLoop":29,"./internal/doLimit":31,"./internal/once":40,"./internal/onlyOnce":41,"./internal/wrapAsync":48,"lodash/isArrayLike":496,"lodash/noop":504}],24:[function(require,module,exports){
+'use strict';
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = eachOfLimit;
+
+var _eachOfLimit2 = require('./internal/eachOfLimit');
+
+var _eachOfLimit3 = _interopRequireDefault(_eachOfLimit2);
+
+var _wrapAsync = require('./internal/wrapAsync');
+
+var _wrapAsync2 = _interopRequireDefault(_wrapAsync);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+/**
+ * The same as [`eachOf`]{@link module:Collections.eachOf} but runs a maximum of `limit` async operations at a
+ * time.
+ *
+ * @name eachOfLimit
+ * @static
+ * @memberOf module:Collections
+ * @method
+ * @see [async.eachOf]{@link module:Collections.eachOf}
+ * @alias forEachOfLimit
+ * @category Collection
+ * @param {Array|Iterable|Object} coll - A collection to iterate over.
+ * @param {number} limit - The maximum number of async operations at a time.
+ * @param {AsyncFunction} iteratee - An async function to apply to each
+ * item in `coll`. The `key` is the item's key, or index in the case of an
+ * array.
+ * Invoked with (item, key, callback).
+ * @param {Function} [callback] - A callback which is called when all
+ * `iteratee` functions have finished, or an error occurs. Invoked with (err).
+ */
+function eachOfLimit(coll, limit, iteratee, callback) {
+  (0, _eachOfLimit3.default)(limit)(coll, (0, _wrapAsync2.default)(iteratee), callback);
+}
+module.exports = exports['default'];
+},{"./internal/eachOfLimit":33,"./internal/wrapAsync":48}],25:[function(require,module,exports){
+'use strict';
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+var _eachOfLimit = require('./eachOfLimit');
+
+var _eachOfLimit2 = _interopRequireDefault(_eachOfLimit);
+
+var _doLimit = require('./internal/doLimit');
+
+var _doLimit2 = _interopRequireDefault(_doLimit);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+/**
+ * The same as [`eachOf`]{@link module:Collections.eachOf} but runs only a single async operation at a time.
+ *
+ * @name eachOfSeries
+ * @static
+ * @memberOf module:Collections
+ * @method
+ * @see [async.eachOf]{@link module:Collections.eachOf}
+ * @alias forEachOfSeries
+ * @category Collection
+ * @param {Array|Iterable|Object} coll - A collection to iterate over.
+ * @param {AsyncFunction} iteratee - An async function to apply to each item in
+ * `coll`.
+ * Invoked with (item, key, callback).
+ * @param {Function} [callback] - A callback which is called when all `iteratee`
+ * functions have finished, or an error occurs. Invoked with (err).
+ */
+exports.default = (0, _doLimit2.default)(_eachOfLimit2.default, 1);
+module.exports = exports['default'];
+},{"./eachOfLimit":24,"./internal/doLimit":31}],26:[function(require,module,exports){
+'use strict';
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+var _eachLimit = require('./eachLimit');
+
+var _eachLimit2 = _interopRequireDefault(_eachLimit);
+
+var _doLimit = require('./internal/doLimit');
+
+var _doLimit2 = _interopRequireDefault(_doLimit);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+/**
+ * The same as [`each`]{@link module:Collections.each} but runs only a single async operation at a time.
+ *
+ * @name eachSeries
+ * @static
+ * @memberOf module:Collections
+ * @method
+ * @see [async.each]{@link module:Collections.each}
+ * @alias forEachSeries
+ * @category Collection
+ * @param {Array|Iterable|Object} coll - A collection to iterate over.
+ * @param {AsyncFunction} iteratee - An async function to apply to each
+ * item in `coll`.
+ * The array index is not passed to the iteratee.
+ * If you need the index, use `eachOfSeries`.
+ * Invoked with (item, callback).
+ * @param {Function} [callback] - A callback which is called when all
+ * `iteratee` functions have finished, or an error occurs. Invoked with (err).
+ */
+exports.default = (0, _doLimit2.default)(_eachLimit2.default, 1);
+module.exports = exports['default'];
+},{"./eachLimit":22,"./internal/doLimit":31}],27:[function(require,module,exports){
+'use strict';
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+var _createTester = require('./internal/createTester');
+
+var _createTester2 = _interopRequireDefault(_createTester);
+
+var _doParallel = require('./internal/doParallel');
+
+var _doParallel2 = _interopRequireDefault(_doParallel);
+
+var _notId = require('./internal/notId');
+
+var _notId2 = _interopRequireDefault(_notId);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+/**
+ * Returns `true` if every element in `coll` satisfies an async test. If any
+ * iteratee call returns `false`, the main `callback` is immediately called.
+ *
+ * @name every
+ * @static
+ * @memberOf module:Collections
+ * @method
+ * @alias all
+ * @category Collection
+ * @param {Array|Iterable|Object} coll - A collection to iterate over.
+ * @param {AsyncFunction} iteratee - An async truth test to apply to each item
+ * in the collection in parallel.
+ * The iteratee must complete with a boolean result value.
+ * Invoked with (item, callback).
+ * @param {Function} [callback] - A callback which is called after all the
+ * `iteratee` functions have finished. Result will be either `true` or `false`
+ * depending on the values of the async tests. Invoked with (err, result).
+ * @example
+ *
+ * async.every(['file1','file2','file3'], function(filePath, callback) {
+ *     fs.access(filePath, function(err) {
+ *         callback(null, !err)
+ *     });
+ * }, function(err, result) {
+ *     // if result is true then every file exists
+ * });
+ */
+exports.default = (0, _doParallel2.default)((0, _createTester2.default)(_notId2.default, _notId2.default));
+module.exports = exports['default'];
+},{"./internal/createTester":30,"./internal/doParallel":32,"./internal/notId":39}],28:[function(require,module,exports){
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+    value: true
+});
+exports.default = DLL;
+// Simple doubly linked list (https://en.wikipedia.org/wiki/Doubly_linked_list) implementation
+// used for queues. This implementation assumes that the node provided by the user can be modified
+// to adjust the next and last properties. We implement only the minimal functionality
+// for queue support.
+function DLL() {
+    this.head = this.tail = null;
+    this.length = 0;
+}
+
+function setInitial(dll, node) {
+    dll.length = 1;
+    dll.head = dll.tail = node;
+}
+
+DLL.prototype.removeLink = function (node) {
+    if (node.prev) node.prev.next = node.next;else this.head = node.next;
+    if (node.next) node.next.prev = node.prev;else this.tail = node.prev;
+
+    node.prev = node.next = null;
+    this.length -= 1;
+    return node;
+};
+
+DLL.prototype.empty = function () {
+    while (this.head) this.shift();
+    return this;
+};
+
+DLL.prototype.insertAfter = function (node, newNode) {
+    newNode.prev = node;
+    newNode.next = node.next;
+    if (node.next) node.next.prev = newNode;else this.tail = newNode;
+    node.next = newNode;
+    this.length += 1;
+};
+
+DLL.prototype.insertBefore = function (node, newNode) {
+    newNode.prev = node.prev;
+    newNode.next = node;
+    if (node.prev) node.prev.next = newNode;else this.head = newNode;
+    node.prev = newNode;
+    this.length += 1;
+};
+
+DLL.prototype.unshift = function (node) {
+    if (this.head) this.insertBefore(this.head, node);else setInitial(this, node);
+};
+
+DLL.prototype.push = function (node) {
+    if (this.tail) this.insertAfter(this.tail, node);else setInitial(this, node);
+};
+
+DLL.prototype.shift = function () {
+    return this.head && this.removeLink(this.head);
+};
+
+DLL.prototype.pop = function () {
+    return this.tail && this.removeLink(this.tail);
+};
+
+DLL.prototype.toArray = function () {
+    var arr = Array(this.length);
+    var curr = this.head;
+    for (var idx = 0; idx < this.length; idx++) {
+        arr[idx] = curr.data;
+        curr = curr.next;
+    }
+    return arr;
+};
+
+DLL.prototype.remove = function (testFn) {
+    var curr = this.head;
+    while (!!curr) {
+        var next = curr.next;
+        if (testFn(curr)) {
+            this.removeLink(curr);
+        }
+        curr = next;
+    }
+    return this;
+};
+module.exports = exports["default"];
+},{}],29:[function(require,module,exports){
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+// A temporary value used to identify if the loop should be broken.
+// See #1064, #1293
+exports.default = {};
+module.exports = exports["default"];
+},{}],30:[function(require,module,exports){
+'use strict';
+
+Object.defineProperty(exports, "__esModule", {
+    value: true
+});
+exports.default = _createTester;
+
+var _noop = require('lodash/noop');
+
+var _noop2 = _interopRequireDefault(_noop);
+
+var _breakLoop = require('./breakLoop');
+
+var _breakLoop2 = _interopRequireDefault(_breakLoop);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+function _createTester(check, getResult) {
+    return function (eachfn, arr, iteratee, cb) {
+        cb = cb || _noop2.default;
+        var testPassed = false;
+        var testResult;
+        eachfn(arr, function (value, _, callback) {
+            iteratee(value, function (err, result) {
+                if (err) {
+                    callback(err);
+                } else if (check(result) && !testResult) {
+                    testPassed = true;
+                    testResult = getResult(true, value);
+                    callback(null, _breakLoop2.default);
+                } else {
+                    callback();
+                }
+            });
+        }, function (err) {
+            if (err) {
+                cb(err);
+            } else {
+                cb(null, testPassed ? testResult : getResult(false));
+            }
+        });
+    };
+}
+module.exports = exports['default'];
+},{"./breakLoop":29,"lodash/noop":504}],31:[function(require,module,exports){
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+    value: true
+});
+exports.default = doLimit;
+function doLimit(fn, limit) {
+    return function (iterable, iteratee, callback) {
+        return fn(iterable, limit, iteratee, callback);
+    };
+}
+module.exports = exports["default"];
+},{}],32:[function(require,module,exports){
+'use strict';
+
+Object.defineProperty(exports, "__esModule", {
+    value: true
+});
+exports.default = doParallel;
+
+var _eachOf = require('../eachOf');
+
+var _eachOf2 = _interopRequireDefault(_eachOf);
+
+var _wrapAsync = require('./wrapAsync');
+
+var _wrapAsync2 = _interopRequireDefault(_wrapAsync);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+function doParallel(fn) {
+    return function (obj, iteratee, callback) {
+        return fn(_eachOf2.default, obj, (0, _wrapAsync2.default)(iteratee), callback);
+    };
+}
+module.exports = exports['default'];
+},{"../eachOf":23,"./wrapAsync":48}],33:[function(require,module,exports){
+'use strict';
+
+Object.defineProperty(exports, "__esModule", {
+    value: true
+});
+exports.default = _eachOfLimit;
+
+var _noop = require('lodash/noop');
+
+var _noop2 = _interopRequireDefault(_noop);
+
+var _once = require('./once');
+
+var _once2 = _interopRequireDefault(_once);
+
+var _iterator = require('./iterator');
+
+var _iterator2 = _interopRequireDefault(_iterator);
+
+var _onlyOnce = require('./onlyOnce');
+
+var _onlyOnce2 = _interopRequireDefault(_onlyOnce);
+
+var _breakLoop = require('./breakLoop');
+
+var _breakLoop2 = _interopRequireDefault(_breakLoop);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+function _eachOfLimit(limit) {
+    return function (obj, iteratee, callback) {
+        callback = (0, _once2.default)(callback || _noop2.default);
+        if (limit <= 0 || !obj) {
+            return callback(null);
+        }
+        var nextElem = (0, _iterator2.default)(obj);
+        var done = false;
+        var running = 0;
+
+        function iterateeCallback(err, value) {
+            running -= 1;
+            if (err) {
+                done = true;
+                callback(err);
+            } else if (value === _breakLoop2.default || done && running <= 0) {
+                done = true;
+                return callback(null);
+            } else {
+                replenish();
+            }
+        }
+
+        function replenish() {
+            while (running < limit && !done) {
+                var elem = nextElem();
+                if (elem === null) {
+                    done = true;
+                    if (running <= 0) {
+                        callback(null);
+                    }
+                    return;
+                }
+                running += 1;
+                iteratee(elem.value, elem.key, (0, _onlyOnce2.default)(iterateeCallback));
+            }
+        }
+
+        replenish();
+    };
+}
+module.exports = exports['default'];
+},{"./breakLoop":29,"./iterator":37,"./once":40,"./onlyOnce":41,"lodash/noop":504}],34:[function(require,module,exports){
+'use strict';
+
+Object.defineProperty(exports, "__esModule", {
+    value: true
+});
+exports.default = _filter;
+
+var _arrayMap = require('lodash/_arrayMap');
+
+var _arrayMap2 = _interopRequireDefault(_arrayMap);
+
+var _isArrayLike = require('lodash/isArrayLike');
+
+var _isArrayLike2 = _interopRequireDefault(_isArrayLike);
+
+var _baseProperty = require('lodash/_baseProperty');
+
+var _baseProperty2 = _interopRequireDefault(_baseProperty);
+
+var _noop = require('lodash/noop');
+
+var _noop2 = _interopRequireDefault(_noop);
+
+var _wrapAsync = require('./wrapAsync');
+
+var _wrapAsync2 = _interopRequireDefault(_wrapAsync);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+function filterArray(eachfn, arr, iteratee, callback) {
+    var truthValues = new Array(arr.length);
+    eachfn(arr, function (x, index, callback) {
+        iteratee(x, function (err, v) {
+            truthValues[index] = !!v;
+            callback(err);
+        });
+    }, function (err) {
+        if (err) return callback(err);
+        var results = [];
+        for (var i = 0; i < arr.length; i++) {
+            if (truthValues[i]) results.push(arr[i]);
+        }
+        callback(null, results);
+    });
+}
+
+function filterGeneric(eachfn, coll, iteratee, callback) {
+    var results = [];
+    eachfn(coll, function (x, index, callback) {
+        iteratee(x, function (err, v) {
+            if (err) {
+                callback(err);
+            } else {
+                if (v) {
+                    results.push({ index: index, value: x });
+                }
+                callback();
+            }
+        });
+    }, function (err) {
+        if (err) {
+            callback(err);
+        } else {
+            callback(null, (0, _arrayMap2.default)(results.sort(function (a, b) {
+                return a.index - b.index;
+            }), (0, _baseProperty2.default)('value')));
+        }
+    });
+}
+
+function _filter(eachfn, coll, iteratee, callback) {
+    var filter = (0, _isArrayLike2.default)(coll) ? filterArray : filterGeneric;
+    filter(eachfn, coll, (0, _wrapAsync2.default)(iteratee), callback || _noop2.default);
+}
+module.exports = exports['default'];
+},{"./wrapAsync":48,"lodash/_arrayMap":472,"lodash/_baseProperty":480,"lodash/isArrayLike":496,"lodash/noop":504}],35:[function(require,module,exports){
+'use strict';
+
+Object.defineProperty(exports, "__esModule", {
+    value: true
+});
+
+exports.default = function (coll) {
+    return iteratorSymbol && coll[iteratorSymbol] && coll[iteratorSymbol]();
+};
+
+var iteratorSymbol = typeof Symbol === 'function' && Symbol.iterator;
+
+module.exports = exports['default'];
+},{}],36:[function(require,module,exports){
+'use strict';
+
+Object.defineProperty(exports, "__esModule", {
+    value: true
+});
+
+exports.default = function (fn) {
+    return function () /*...args, callback*/{
+        var args = (0, _slice2.default)(arguments);
+        var callback = args.pop();
+        fn.call(this, args, callback);
+    };
+};
+
+var _slice = require('./slice');
+
+var _slice2 = _interopRequireDefault(_slice);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+module.exports = exports['default'];
+},{"./slice":46}],37:[function(require,module,exports){
+'use strict';
+
+Object.defineProperty(exports, "__esModule", {
+    value: true
+});
+exports.default = iterator;
+
+var _isArrayLike = require('lodash/isArrayLike');
+
+var _isArrayLike2 = _interopRequireDefault(_isArrayLike);
+
+var _getIterator = require('./getIterator');
+
+var _getIterator2 = _interopRequireDefault(_getIterator);
+
+var _keys = require('lodash/keys');
+
+var _keys2 = _interopRequireDefault(_keys);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+function createArrayIterator(coll) {
+    var i = -1;
+    var len = coll.length;
+    return function next() {
+        return ++i < len ? { value: coll[i], key: i } : null;
+    };
+}
+
+function createES2015Iterator(iterator) {
+    var i = -1;
+    return function next() {
+        var item = iterator.next();
+        if (item.done) return null;
+        i++;
+        return { value: item.value, key: i };
+    };
+}
+
+function createObjectIterator(obj) {
+    var okeys = (0, _keys2.default)(obj);
+    var i = -1;
+    var len = okeys.length;
+    return function next() {
+        var key = okeys[++i];
+        return i < len ? { value: obj[key], key: key } : null;
+    };
+}
+
+function iterator(coll) {
+    if ((0, _isArrayLike2.default)(coll)) {
+        return createArrayIterator(coll);
+    }
+
+    var iterator = (0, _getIterator2.default)(coll);
+    return iterator ? createES2015Iterator(iterator) : createObjectIterator(coll);
+}
+module.exports = exports['default'];
+},{"./getIterator":35,"lodash/isArrayLike":496,"lodash/keys":503}],38:[function(require,module,exports){
+'use strict';
+
+Object.defineProperty(exports, "__esModule", {
+    value: true
+});
+exports.default = _asyncMap;
+
+var _noop = require('lodash/noop');
+
+var _noop2 = _interopRequireDefault(_noop);
+
+var _wrapAsync = require('./wrapAsync');
+
+var _wrapAsync2 = _interopRequireDefault(_wrapAsync);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+function _asyncMap(eachfn, arr, iteratee, callback) {
+    callback = callback || _noop2.default;
+    arr = arr || [];
+    var results = [];
+    var counter = 0;
+    var _iteratee = (0, _wrapAsync2.default)(iteratee);
+
+    eachfn(arr, function (value, _, callback) {
+        var index = counter++;
+        _iteratee(value, function (err, v) {
+            results[index] = v;
+            callback(err);
+        });
+    }, function (err) {
+        callback(err, results);
+    });
+}
+module.exports = exports['default'];
+},{"./wrapAsync":48,"lodash/noop":504}],39:[function(require,module,exports){
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+    value: true
+});
+exports.default = notId;
+function notId(v) {
+    return !v;
+}
+module.exports = exports["default"];
+},{}],40:[function(require,module,exports){
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+    value: true
+});
+exports.default = once;
+function once(fn) {
+    return function () {
+        if (fn === null) return;
+        var callFn = fn;
+        fn = null;
+        callFn.apply(this, arguments);
+    };
+}
+module.exports = exports["default"];
+},{}],41:[function(require,module,exports){
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+    value: true
+});
+exports.default = onlyOnce;
+function onlyOnce(fn) {
+    return function () {
+        if (fn === null) throw new Error("Callback was already called.");
+        var callFn = fn;
+        fn = null;
+        callFn.apply(this, arguments);
+    };
+}
+module.exports = exports["default"];
+},{}],42:[function(require,module,exports){
+'use strict';
+
+Object.defineProperty(exports, "__esModule", {
+    value: true
+});
+exports.default = _parallel;
+
+var _noop = require('lodash/noop');
+
+var _noop2 = _interopRequireDefault(_noop);
+
+var _isArrayLike = require('lodash/isArrayLike');
+
+var _isArrayLike2 = _interopRequireDefault(_isArrayLike);
+
+var _slice = require('./slice');
+
+var _slice2 = _interopRequireDefault(_slice);
+
+var _wrapAsync = require('./wrapAsync');
+
+var _wrapAsync2 = _interopRequireDefault(_wrapAsync);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+function _parallel(eachfn, tasks, callback) {
+    callback = callback || _noop2.default;
+    var results = (0, _isArrayLike2.default)(tasks) ? [] : {};
+
+    eachfn(tasks, function (task, key, callback) {
+        (0, _wrapAsync2.default)(task)(function (err, result) {
+            if (arguments.length > 2) {
+                result = (0, _slice2.default)(arguments, 1);
+            }
+            results[key] = result;
+            callback(err);
+        });
+    }, function (err) {
+        callback(err, results);
+    });
+}
+module.exports = exports['default'];
+},{"./slice":46,"./wrapAsync":48,"lodash/isArrayLike":496,"lodash/noop":504}],43:[function(require,module,exports){
+'use strict';
+
+Object.defineProperty(exports, "__esModule", {
+    value: true
+});
+exports.default = queue;
+
+var _baseIndexOf = require('lodash/_baseIndexOf');
+
+var _baseIndexOf2 = _interopRequireDefault(_baseIndexOf);
+
+var _isArray = require('lodash/isArray');
+
+var _isArray2 = _interopRequireDefault(_isArray);
+
+var _noop = require('lodash/noop');
+
+var _noop2 = _interopRequireDefault(_noop);
+
+var _onlyOnce = require('./onlyOnce');
+
+var _onlyOnce2 = _interopRequireDefault(_onlyOnce);
+
+var _setImmediate = require('./setImmediate');
+
+var _setImmediate2 = _interopRequireDefault(_setImmediate);
+
+var _DoublyLinkedList = require('./DoublyLinkedList');
+
+var _DoublyLinkedList2 = _interopRequireDefault(_DoublyLinkedList);
+
+var _wrapAsync = require('./wrapAsync');
+
+var _wrapAsync2 = _interopRequireDefault(_wrapAsync);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+function queue(worker, concurrency, payload) {
+    if (concurrency == null) {
+        concurrency = 1;
+    } else if (concurrency === 0) {
+        throw new Error('Concurrency must not be zero');
+    }
+
+    var _worker = (0, _wrapAsync2.default)(worker);
+    var numRunning = 0;
+    var workersList = [];
+
+    function _insert(data, insertAtFront, callback) {
+        if (callback != null && typeof callback !== 'function') {
+            throw new Error('task callback must be a function');
+        }
+        q.started = true;
+        if (!(0, _isArray2.default)(data)) {
+            data = [data];
+        }
+        if (data.length === 0 && q.idle()) {
+            // call drain immediately if there are no tasks
+            return (0, _setImmediate2.default)(function () {
+                q.drain();
+            });
+        }
+
+        for (var i = 0, l = data.length; i < l; i++) {
+            var item = {
+                data: data[i],
+                callback: callback || _noop2.default
+            };
+
+            if (insertAtFront) {
+                q._tasks.unshift(item);
+            } else {
+                q._tasks.push(item);
+            }
+        }
+        (0, _setImmediate2.default)(q.process);
+    }
+
+    function _next(tasks) {
+        return function (err) {
+            numRunning -= 1;
+
+            for (var i = 0, l = tasks.length; i < l; i++) {
+                var task = tasks[i];
+
+                var index = (0, _baseIndexOf2.default)(workersList, task, 0);
+                if (index >= 0) {
+                    workersList.splice(index, 1);
+                }
+
+                task.callback.apply(task, arguments);
+
+                if (err != null) {
+                    q.error(err, task.data);
+                }
+            }
+
+            if (numRunning <= q.concurrency - q.buffer) {
+                q.unsaturated();
+            }
+
+            if (q.idle()) {
+                q.drain();
+            }
+            q.process();
+        };
+    }
+
+    var isProcessing = false;
+    var q = {
+        _tasks: new _DoublyLinkedList2.default(),
+        concurrency: concurrency,
+        payload: payload,
+        saturated: _noop2.default,
+        unsaturated: _noop2.default,
+        buffer: concurrency / 4,
+        empty: _noop2.default,
+        drain: _noop2.default,
+        error: _noop2.default,
+        started: false,
+        paused: false,
+        push: function (data, callback) {
+            _insert(data, false, callback);
+        },
+        kill: function () {
+            q.drain = _noop2.default;
+            q._tasks.empty();
+        },
+        unshift: function (data, callback) {
+            _insert(data, true, callback);
+        },
+        remove: function (testFn) {
+            q._tasks.remove(testFn);
+        },
+        process: function () {
+            // Avoid trying to start too many processing operations. This can occur
+            // when callbacks resolve synchronously (#1267).
+            if (isProcessing) {
+                return;
+            }
+            isProcessing = true;
+            while (!q.paused && numRunning < q.concurrency && q._tasks.length) {
+                var tasks = [],
+                    data = [];
+                var l = q._tasks.length;
+                if (q.payload) l = Math.min(l, q.payload);
+                for (var i = 0; i < l; i++) {
+                    var node = q._tasks.shift();
+                    tasks.push(node);
+                    workersList.push(node);
+                    data.push(node.data);
+                }
+
+                numRunning += 1;
+
+                if (q._tasks.length === 0) {
+                    q.empty();
+                }
+
+                if (numRunning === q.concurrency) {
+                    q.saturated();
+                }
+
+                var cb = (0, _onlyOnce2.default)(_next(tasks));
+                _worker(data, cb);
+            }
+            isProcessing = false;
+        },
+        length: function () {
+            return q._tasks.length;
+        },
+        running: function () {
+            return numRunning;
+        },
+        workersList: function () {
+            return workersList;
+        },
+        idle: function () {
+            return q._tasks.length + numRunning === 0;
+        },
+        pause: function () {
+            q.paused = true;
+        },
+        resume: function () {
+            if (q.paused === false) {
+                return;
+            }
+            q.paused = false;
+            (0, _setImmediate2.default)(q.process);
+        }
+    };
+    return q;
+}
+module.exports = exports['default'];
+},{"./DoublyLinkedList":28,"./onlyOnce":41,"./setImmediate":45,"./wrapAsync":48,"lodash/_baseIndexOf":475,"lodash/isArray":495,"lodash/noop":504}],44:[function(require,module,exports){
+'use strict';
+
+Object.defineProperty(exports, "__esModule", {
+    value: true
+});
+exports.default = reject;
+
+var _filter = require('./filter');
+
+var _filter2 = _interopRequireDefault(_filter);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+function reject(eachfn, arr, iteratee, callback) {
+    (0, _filter2.default)(eachfn, arr, function (value, cb) {
+        iteratee(value, function (err, v) {
+            cb(err, !v);
+        });
+    }, callback);
+}
+module.exports = exports['default'];
+},{"./filter":34}],45:[function(require,module,exports){
+(function (process){
+'use strict';
+
+Object.defineProperty(exports, "__esModule", {
+    value: true
+});
+exports.hasNextTick = exports.hasSetImmediate = undefined;
+exports.fallback = fallback;
+exports.wrap = wrap;
+
+var _slice = require('./slice');
+
+var _slice2 = _interopRequireDefault(_slice);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+var hasSetImmediate = exports.hasSetImmediate = typeof setImmediate === 'function' && setImmediate;
+var hasNextTick = exports.hasNextTick = typeof process === 'object' && typeof process.nextTick === 'function';
+
+function fallback(fn) {
+    setTimeout(fn, 0);
+}
+
+function wrap(defer) {
+    return function (fn /*, ...args*/) {
+        var args = (0, _slice2.default)(arguments, 1);
+        defer(function () {
+            fn.apply(null, args);
+        });
+    };
+}
+
+var _defer;
+
+if (hasSetImmediate) {
+    _defer = setImmediate;
+} else if (hasNextTick) {
+    _defer = process.nextTick;
+} else {
+    _defer = fallback;
+}
+
+exports.default = wrap(_defer);
+}).call(this,require('_process'))
+},{"./slice":46,"_process":729}],46:[function(require,module,exports){
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+    value: true
+});
+exports.default = slice;
+function slice(arrayLike, start) {
+    start = start | 0;
+    var newLen = Math.max(arrayLike.length - start, 0);
+    var newArr = Array(newLen);
+    for (var idx = 0; idx < newLen; idx++) {
+        newArr[idx] = arrayLike[start + idx];
+    }
+    return newArr;
+}
+module.exports = exports["default"];
+},{}],47:[function(require,module,exports){
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+    value: true
+});
+exports.default = _withoutIndex;
+function _withoutIndex(iteratee) {
+    return function (value, index, callback) {
+        return iteratee(value, callback);
+    };
+}
+module.exports = exports["default"];
+},{}],48:[function(require,module,exports){
+'use strict';
+
+Object.defineProperty(exports, "__esModule", {
+    value: true
+});
+exports.isAsync = undefined;
+
+var _asyncify = require('../asyncify');
+
+var _asyncify2 = _interopRequireDefault(_asyncify);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+var supportsSymbol = typeof Symbol === 'function';
+
+function isAsync(fn) {
+    return supportsSymbol && fn[Symbol.toStringTag] === 'AsyncFunction';
+}
+
+function wrapAsync(asyncFn) {
+    return isAsync(asyncFn) ? (0, _asyncify2.default)(asyncFn) : asyncFn;
+}
+
+exports.default = wrapAsync;
+exports.isAsync = isAsync;
+},{"../asyncify":18}],49:[function(require,module,exports){
+'use strict';
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+var _doParallel = require('./internal/doParallel');
+
+var _doParallel2 = _interopRequireDefault(_doParallel);
+
+var _map = require('./internal/map');
+
+var _map2 = _interopRequireDefault(_map);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+/**
+ * Produces a new collection of values by mapping each value in `coll` through
+ * the `iteratee` function. The `iteratee` is called with an item from `coll`
+ * and a callback for when it has finished processing. Each of these callback
+ * takes 2 arguments: an `error`, and the transformed item from `coll`. If
+ * `iteratee` passes an error to its callback, the main `callback` (for the
+ * `map` function) is immediately called with the error.
+ *
+ * Note, that since this function applies the `iteratee` to each item in
+ * parallel, there is no guarantee that the `iteratee` functions will complete
+ * in order. However, the results array will be in the same order as the
+ * original `coll`.
+ *
+ * If `map` is passed an Object, the results will be an Array.  The results
+ * will roughly be in the order of the original Objects' keys (but this can
+ * vary across JavaScript engines).
+ *
+ * @name map
+ * @static
+ * @memberOf module:Collections
+ * @method
+ * @category Collection
+ * @param {Array|Iterable|Object} coll - A collection to iterate over.
+ * @param {AsyncFunction} iteratee - An async function to apply to each item in
+ * `coll`.
+ * The iteratee should complete with the transformed item.
+ * Invoked with (item, callback).
+ * @param {Function} [callback] - A callback which is called when all `iteratee`
+ * functions have finished, or an error occurs. Results is an Array of the
+ * transformed items from the `coll`. Invoked with (err, results).
+ * @example
+ *
+ * async.map(['file1','file2','file3'], fs.stat, function(err, results) {
+ *     // results is now an array of stats for each file
+ * });
+ */
+exports.default = (0, _doParallel2.default)(_map2.default);
+module.exports = exports['default'];
+},{"./internal/doParallel":32,"./internal/map":38}],50:[function(require,module,exports){
+'use strict';
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = parallelLimit;
+
+var _eachOf = require('./eachOf');
+
+var _eachOf2 = _interopRequireDefault(_eachOf);
+
+var _parallel = require('./internal/parallel');
+
+var _parallel2 = _interopRequireDefault(_parallel);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+/**
+ * Run the `tasks` collection of functions in parallel, without waiting until
+ * the previous function has completed. If any of the functions pass an error to
+ * its callback, the main `callback` is immediately called with the value of the
+ * error. Once the `tasks` have completed, the results are passed to the final
+ * `callback` as an array.
+ *
+ * **Note:** `parallel` is about kicking-off I/O tasks in parallel, not about
+ * parallel execution of code.  If your tasks do not use any timers or perform
+ * any I/O, they will actually be executed in series.  Any synchronous setup
+ * sections for each task will happen one after the other.  JavaScript remains
+ * single-threaded.
+ *
+ * **Hint:** Use [`reflect`]{@link module:Utils.reflect} to continue the
+ * execution of other tasks when a task fails.
+ *
+ * It is also possible to use an object instead of an array. Each property will
+ * be run as a function and the results will be passed to the final `callback`
+ * as an object instead of an array. This can be a more readable way of handling
+ * results from {@link async.parallel}.
+ *
+ * @name parallel
+ * @static
+ * @memberOf module:ControlFlow
+ * @method
+ * @category Control Flow
+ * @param {Array|Iterable|Object} tasks - A collection of
+ * [async functions]{@link AsyncFunction} to run.
+ * Each async function can complete with any number of optional `result` values.
+ * @param {Function} [callback] - An optional callback to run once all the
+ * functions have completed successfully. This function gets a results array
+ * (or object) containing all the result arguments passed to the task callbacks.
+ * Invoked with (err, results).
+ *
+ * @example
+ * async.parallel([
+ *     function(callback) {
+ *         setTimeout(function() {
+ *             callback(null, 'one');
+ *         }, 200);
+ *     },
+ *     function(callback) {
+ *         setTimeout(function() {
+ *             callback(null, 'two');
+ *         }, 100);
+ *     }
+ * ],
+ * // optional callback
+ * function(err, results) {
+ *     // the results array will equal ['one','two'] even though
+ *     // the second function had a shorter timeout.
+ * });
+ *
+ * // an example using an object instead of an array
+ * async.parallel({
+ *     one: function(callback) {
+ *         setTimeout(function() {
+ *             callback(null, 1);
+ *         }, 200);
+ *     },
+ *     two: function(callback) {
+ *         setTimeout(function() {
+ *             callback(null, 2);
+ *         }, 100);
+ *     }
+ * }, function(err, results) {
+ *     // results is now equals to: {one: 1, two: 2}
+ * });
+ */
+function parallelLimit(tasks, callback) {
+  (0, _parallel2.default)(_eachOf2.default, tasks, callback);
+}
+module.exports = exports['default'];
+},{"./eachOf":23,"./internal/parallel":42}],51:[function(require,module,exports){
+'use strict';
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+exports.default = function (worker, concurrency) {
+  var _worker = (0, _wrapAsync2.default)(worker);
+  return (0, _queue2.default)(function (items, cb) {
+    _worker(items[0], cb);
+  }, concurrency, 1);
+};
+
+var _queue = require('./internal/queue');
+
+var _queue2 = _interopRequireDefault(_queue);
+
+var _wrapAsync = require('./internal/wrapAsync');
+
+var _wrapAsync2 = _interopRequireDefault(_wrapAsync);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+module.exports = exports['default'];
+
+/**
+ * A queue of tasks for the worker function to complete.
+ * @typedef {Object} QueueObject
+ * @memberOf module:ControlFlow
+ * @property {Function} length - a function returning the number of items
+ * waiting to be processed. Invoke with `queue.length()`.
+ * @property {boolean} started - a boolean indicating whether or not any
+ * items have been pushed and processed by the queue.
+ * @property {Function} running - a function returning the number of items
+ * currently being processed. Invoke with `queue.running()`.
+ * @property {Function} workersList - a function returning the array of items
+ * currently being processed. Invoke with `queue.workersList()`.
+ * @property {Function} idle - a function returning false if there are items
+ * waiting or being processed, or true if not. Invoke with `queue.idle()`.
+ * @property {number} concurrency - an integer for determining how many `worker`
+ * functions should be run in parallel. This property can be changed after a
+ * `queue` is created to alter the concurrency on-the-fly.
+ * @property {Function} push - add a new task to the `queue`. Calls `callback`
+ * once the `worker` has finished processing the task. Instead of a single task,
+ * a `tasks` array can be submitted. The respective callback is used for every
+ * task in the list. Invoke with `queue.push(task, [callback])`,
+ * @property {Function} unshift - add a new task to the front of the `queue`.
+ * Invoke with `queue.unshift(task, [callback])`.
+ * @property {Function} remove - remove items from the queue that match a test
+ * function.  The test function will be passed an object with a `data` property,
+ * and a `priority` property, if this is a
+ * [priorityQueue]{@link module:ControlFlow.priorityQueue} object.
+ * Invoked with `queue.remove(testFn)`, where `testFn` is of the form
+ * `function ({data, priority}) {}` and returns a Boolean.
+ * @property {Function} saturated - a callback that is called when the number of
+ * running workers hits the `concurrency` limit, and further tasks will be
+ * queued.
+ * @property {Function} unsaturated - a callback that is called when the number
+ * of running workers is less than the `concurrency` & `buffer` limits, and
+ * further tasks will not be queued.
+ * @property {number} buffer - A minimum threshold buffer in order to say that
+ * the `queue` is `unsaturated`.
+ * @property {Function} empty - a callback that is called when the last item
+ * from the `queue` is given to a `worker`.
+ * @property {Function} drain - a callback that is called when the last item
+ * from the `queue` has returned from the `worker`.
+ * @property {Function} error - a callback that is called when a task errors.
+ * Has the signature `function(error, task)`.
+ * @property {boolean} paused - a boolean for determining whether the queue is
+ * in a paused state.
+ * @property {Function} pause - a function that pauses the processing of tasks
+ * until `resume()` is called. Invoke with `queue.pause()`.
+ * @property {Function} resume - a function that resumes the processing of
+ * queued tasks when the queue is paused. Invoke with `queue.resume()`.
+ * @property {Function} kill - a function that removes the `drain` callback and
+ * empties remaining tasks from the queue forcing it to go idle. No more tasks
+ * should be pushed to the queue after calling this function. Invoke with `queue.kill()`.
+ */
+
+/**
+ * Creates a `queue` object with the specified `concurrency`. Tasks added to the
+ * `queue` are processed in parallel (up to the `concurrency` limit). If all
+ * `worker`s are in progress, the task is queued until one becomes available.
+ * Once a `worker` completes a `task`, that `task`'s callback is called.
+ *
+ * @name queue
+ * @static
+ * @memberOf module:ControlFlow
+ * @method
+ * @category Control Flow
+ * @param {AsyncFunction} worker - An async function for processing a queued task.
+ * If you want to handle errors from an individual task, pass a callback to
+ * `q.push()`. Invoked with (task, callback).
+ * @param {number} [concurrency=1] - An `integer` for determining how many
+ * `worker` functions should be run in parallel.  If omitted, the concurrency
+ * defaults to `1`.  If the concurrency is `0`, an error is thrown.
+ * @returns {module:ControlFlow.QueueObject} A queue object to manage the tasks. Callbacks can
+ * attached as certain properties to listen for specific events during the
+ * lifecycle of the queue.
+ * @example
+ *
+ * // create a queue object with concurrency 2
+ * var q = async.queue(function(task, callback) {
+ *     console.log('hello ' + task.name);
+ *     callback();
+ * }, 2);
+ *
+ * // assign a callback
+ * q.drain = function() {
+ *     console.log('all items have been processed');
+ * };
+ *
+ * // add some items to the queue
+ * q.push({name: 'foo'}, function(err) {
+ *     console.log('finished processing foo');
+ * });
+ * q.push({name: 'bar'}, function (err) {
+ *     console.log('finished processing bar');
+ * });
+ *
+ * // add some items to the queue (batch-wise)
+ * q.push([{name: 'baz'},{name: 'bay'},{name: 'bax'}], function(err) {
+ *     console.log('finished processing item');
+ * });
+ *
+ * // add some items to the front of the queue
+ * q.unshift({name: 'bar'}, function (err) {
+ *     console.log('finished processing bar');
+ * });
+ */
+},{"./internal/queue":43,"./internal/wrapAsync":48}],52:[function(require,module,exports){
+'use strict';
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+var _reject = require('./internal/reject');
+
+var _reject2 = _interopRequireDefault(_reject);
+
+var _doParallel = require('./internal/doParallel');
+
+var _doParallel2 = _interopRequireDefault(_doParallel);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+/**
+ * The opposite of [`filter`]{@link module:Collections.filter}. Removes values that pass an `async` truth test.
+ *
+ * @name reject
+ * @static
+ * @memberOf module:Collections
+ * @method
+ * @see [async.filter]{@link module:Collections.filter}
+ * @category Collection
+ * @param {Array|Iterable|Object} coll - A collection to iterate over.
+ * @param {Function} iteratee - An async truth test to apply to each item in
+ * `coll`.
+ * The should complete with a boolean value as its `result`.
+ * Invoked with (item, callback).
+ * @param {Function} [callback] - A callback which is called after all the
+ * `iteratee` functions have finished. Invoked with (err, results).
+ * @example
+ *
+ * async.reject(['file1','file2','file3'], function(filePath, callback) {
+ *     fs.access(filePath, function(err) {
+ *         callback(null, !err)
+ *     });
+ * }, function(err, results) {
+ *     // results now equals an array of missing files
+ *     createFiles(results);
+ * });
+ */
+exports.default = (0, _doParallel2.default)(_reject2.default);
+module.exports = exports['default'];
+},{"./internal/doParallel":32,"./internal/reject":44}],53:[function(require,module,exports){
+'use strict';
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.default = series;
+
+var _parallel = require('./internal/parallel');
+
+var _parallel2 = _interopRequireDefault(_parallel);
+
+var _eachOfSeries = require('./eachOfSeries');
+
+var _eachOfSeries2 = _interopRequireDefault(_eachOfSeries);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+/**
+ * Run the functions in the `tasks` collection in series, each one running once
+ * the previous function has completed. If any functions in the series pass an
+ * error to its callback, no more functions are run, and `callback` is
+ * immediately called with the value of the error. Otherwise, `callback`
+ * receives an array of results when `tasks` have completed.
+ *
+ * It is also possible to use an object instead of an array. Each property will
+ * be run as a function, and the results will be passed to the final `callback`
+ * as an object instead of an array. This can be a more readable way of handling
+ *  results from {@link async.series}.
+ *
+ * **Note** that while many implementations preserve the order of object
+ * properties, the [ECMAScript Language Specification](http://www.ecma-international.org/ecma-262/5.1/#sec-8.6)
+ * explicitly states that
+ *
+ * > The mechanics and order of enumerating the properties is not specified.
+ *
+ * So if you rely on the order in which your series of functions are executed,
+ * and want this to work on all platforms, consider using an array.
+ *
+ * @name series
+ * @static
+ * @memberOf module:ControlFlow
+ * @method
+ * @category Control Flow
+ * @param {Array|Iterable|Object} tasks - A collection containing
+ * [async functions]{@link AsyncFunction} to run in series.
+ * Each function can complete with any number of optional `result` values.
+ * @param {Function} [callback] - An optional callback to run once all the
+ * functions have completed. This function gets a results array (or object)
+ * containing all the result arguments passed to the `task` callbacks. Invoked
+ * with (err, result).
+ * @example
+ * async.series([
+ *     function(callback) {
+ *         // do some stuff ...
+ *         callback(null, 'one');
+ *     },
+ *     function(callback) {
+ *         // do some more stuff ...
+ *         callback(null, 'two');
+ *     }
+ * ],
+ * // optional callback
+ * function(err, results) {
+ *     // results is now equal to ['one', 'two']
+ * });
+ *
+ * async.series({
+ *     one: function(callback) {
+ *         setTimeout(function() {
+ *             callback(null, 1);
+ *         }, 200);
+ *     },
+ *     two: function(callback){
+ *         setTimeout(function() {
+ *             callback(null, 2);
+ *         }, 100);
+ *     }
+ * }, function(err, results) {
+ *     // results is now equal to: {one: 1, two: 2}
+ * });
+ */
+function series(tasks, callback) {
+  (0, _parallel2.default)(_eachOfSeries2.default, tasks, callback);
+}
+module.exports = exports['default'];
+},{"./eachOfSeries":25,"./internal/parallel":42}],54:[function(require,module,exports){
+'use strict';
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+var _setImmediate = require('./internal/setImmediate');
+
+var _setImmediate2 = _interopRequireDefault(_setImmediate);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+/**
+ * Calls `callback` on a later loop around the event loop. In Node.js this just
+ * calls `setImmediate`.  In the browser it will use `setImmediate` if
+ * available, otherwise `setTimeout(callback, 0)`, which means other higher
+ * priority events may precede the execution of `callback`.
+ *
+ * This is used internally for browser-compatibility purposes.
+ *
+ * @name setImmediate
+ * @static
+ * @memberOf module:Utils
+ * @method
+ * @alias nextTick
+ * @category Util
+ * @param {Function} callback - The function to call on a later loop around
+ * the event loop. Invoked with (args...).
+ * @param {...*} args... - any number of additional arguments to pass to the
+ * callback on the next tick.
+ * @example
+ *
+ * var call_order = [];
+ * async.nextTick(function() {
+ *     call_order.push('two');
+ *     // call_order now equals ['one','two']
+ * });
+ * call_order.push('one');
+ *
+ * async.setImmediate(function (a, b, c) {
+ *     // a, b, and c equal 1, 2, and 3
+ * }, 1, 2, 3);
+ */
+exports.default = _setImmediate2.default;
+module.exports = exports['default'];
+},{"./internal/setImmediate":45}],55:[function(require,module,exports){
+'use strict';
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+var _createTester = require('./internal/createTester');
+
+var _createTester2 = _interopRequireDefault(_createTester);
+
+var _doParallel = require('./internal/doParallel');
+
+var _doParallel2 = _interopRequireDefault(_doParallel);
+
+var _identity = require('lodash/identity');
+
+var _identity2 = _interopRequireDefault(_identity);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+/**
+ * Returns `true` if at least one element in the `coll` satisfies an async test.
+ * If any iteratee call returns `true`, the main `callback` is immediately
+ * called.
+ *
+ * @name some
+ * @static
+ * @memberOf module:Collections
+ * @method
+ * @alias any
+ * @category Collection
+ * @param {Array|Iterable|Object} coll - A collection to iterate over.
+ * @param {AsyncFunction} iteratee - An async truth test to apply to each item
+ * in the collections in parallel.
+ * The iteratee should complete with a boolean `result` value.
+ * Invoked with (item, callback).
+ * @param {Function} [callback] - A callback which is called as soon as any
+ * iteratee returns `true`, or after all the iteratee functions have finished.
+ * Result will be either `true` or `false` depending on the values of the async
+ * tests. Invoked with (err, result).
+ * @example
+ *
+ * async.some(['file1','file2','file3'], function(filePath, callback) {
+ *     fs.access(filePath, function(err) {
+ *         callback(null, !err)
+ *     });
+ * }, function(err, result) {
+ *     // if result is true then at least one of the files exists
+ * });
+ */
+exports.default = (0, _doParallel2.default)((0, _createTester2.default)(Boolean, _identity2.default));
+module.exports = exports['default'];
+},{"./internal/createTester":30,"./internal/doParallel":32,"lodash/identity":493}],56:[function(require,module,exports){
+'use strict';
+
+Object.defineProperty(exports, "__esModule", {
+    value: true
+});
+exports.default = timeout;
+
+var _initialParams = require('./internal/initialParams');
+
+var _initialParams2 = _interopRequireDefault(_initialParams);
+
+var _wrapAsync = require('./internal/wrapAsync');
+
+var _wrapAsync2 = _interopRequireDefault(_wrapAsync);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+/**
+ * Sets a time limit on an asynchronous function. If the function does not call
+ * its callback within the specified milliseconds, it will be called with a
+ * timeout error. The code property for the error object will be `'ETIMEDOUT'`.
+ *
+ * @name timeout
+ * @static
+ * @memberOf module:Utils
+ * @method
+ * @category Util
+ * @param {AsyncFunction} asyncFn - The async function to limit in time.
+ * @param {number} milliseconds - The specified time limit.
+ * @param {*} [info] - Any variable you want attached (`string`, `object`, etc)
+ * to timeout Error for more information..
+ * @returns {AsyncFunction} Returns a wrapped function that can be used with any
+ * of the control flow functions.
+ * Invoke this function with the same parameters as you would `asyncFunc`.
+ * @example
+ *
+ * function myFunction(foo, callback) {
+ *     doAsyncTask(foo, function(err, data) {
+ *         // handle errors
+ *         if (err) return callback(err);
+ *
+ *         // do some stuff ...
+ *
+ *         // return processed data
+ *         return callback(null, data);
+ *     });
+ * }
+ *
+ * var wrapped = async.timeout(myFunction, 1000);
+ *
+ * // call `wrapped` as you would `myFunction`
+ * wrapped({ bar: 'bar' }, function(err, data) {
+ *     // if `myFunction` takes < 1000 ms to execute, `err`
+ *     // and `data` will have their expected values
+ *
+ *     // else `err` will be an Error with the code 'ETIMEDOUT'
+ * });
+ */
+function timeout(asyncFn, milliseconds, info) {
+    var fn = (0, _wrapAsync2.default)(asyncFn);
+
+    return (0, _initialParams2.default)(function (args, callback) {
+        var timedOut = false;
+        var timer;
+
+        function timeoutCallback() {
+            var name = asyncFn.name || 'anonymous';
+            var error = new Error('Callback function "' + name + '" timed out.');
+            error.code = 'ETIMEDOUT';
+            if (info) {
+                error.info = info;
+            }
+            timedOut = true;
+            callback(error);
+        }
+
+        args.push(function () {
+            if (!timedOut) {
+                callback.apply(null, arguments);
+                clearTimeout(timer);
+            }
+        });
+
+        // setup timer and call original function
+        timer = setTimeout(timeoutCallback, milliseconds);
+        fn.apply(null, args);
+    });
+}
+module.exports = exports['default'];
+},{"./internal/initialParams":36,"./internal/wrapAsync":48}],57:[function(require,module,exports){
+'use strict';
+
+Object.defineProperty(exports, "__esModule", {
+    value: true
+});
+
+exports.default = function (tasks, callback) {
+    callback = (0, _once2.default)(callback || _noop2.default);
+    if (!(0, _isArray2.default)(tasks)) return callback(new Error('First argument to waterfall must be an array of functions'));
+    if (!tasks.length) return callback();
+    var taskIndex = 0;
+
+    function nextTask(args) {
+        var task = (0, _wrapAsync2.default)(tasks[taskIndex++]);
+        args.push((0, _onlyOnce2.default)(next));
+        task.apply(null, args);
+    }
+
+    function next(err /*, ...args*/) {
+        if (err || taskIndex === tasks.length) {
+            return callback.apply(null, arguments);
+        }
+        nextTask((0, _slice2.default)(arguments, 1));
+    }
+
+    nextTask([]);
+};
+
+var _isArray = require('lodash/isArray');
+
+var _isArray2 = _interopRequireDefault(_isArray);
+
+var _noop = require('lodash/noop');
+
+var _noop2 = _interopRequireDefault(_noop);
+
+var _once = require('./internal/once');
+
+var _once2 = _interopRequireDefault(_once);
+
+var _slice = require('./internal/slice');
+
+var _slice2 = _interopRequireDefault(_slice);
+
+var _onlyOnce = require('./internal/onlyOnce');
+
+var _onlyOnce2 = _interopRequireDefault(_onlyOnce);
+
+var _wrapAsync = require('./internal/wrapAsync');
+
+var _wrapAsync2 = _interopRequireDefault(_wrapAsync);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+module.exports = exports['default'];
+
+/**
+ * Runs the `tasks` array of functions in series, each passing their results to
+ * the next in the array. However, if any of the `tasks` pass an error to their
+ * own callback, the next function is not executed, and the main `callback` is
+ * immediately called with the error.
+ *
+ * @name waterfall
+ * @static
+ * @memberOf module:ControlFlow
+ * @method
+ * @category Control Flow
+ * @param {Array} tasks - An array of [async functions]{@link AsyncFunction}
+ * to run.
+ * Each function should complete with any number of `result` values.
+ * The `result` values will be passed as arguments, in order, to the next task.
+ * @param {Function} [callback] - An optional callback to run once all the
+ * functions have completed. This will be passed the results of the last task's
+ * callback. Invoked with (err, [results]).
+ * @returns undefined
+ * @example
+ *
+ * async.waterfall([
+ *     function(callback) {
+ *         callback(null, 'one', 'two');
+ *     },
+ *     function(arg1, arg2, callback) {
+ *         // arg1 now equals 'one' and arg2 now equals 'two'
+ *         callback(null, 'three');
+ *     },
+ *     function(arg1, callback) {
+ *         // arg1 now equals 'three'
+ *         callback(null, 'done');
+ *     }
+ * ], function (err, result) {
+ *     // result now equals 'done'
+ * });
+ *
+ * // Or, with named functions:
+ * async.waterfall([
+ *     myFirstFunction,
+ *     mySecondFunction,
+ *     myLastFunction,
+ * ], function (err, result) {
+ *     // result now equals 'done'
+ * });
+ * function myFirstFunction(callback) {
+ *     callback(null, 'one', 'two');
+ * }
+ * function mySecondFunction(arg1, arg2, callback) {
+ *     // arg1 now equals 'one' and arg2 now equals 'two'
+ *     callback(null, 'three');
+ * }
+ * function myLastFunction(arg1, callback) {
+ *     // arg1 now equals 'three'
+ *     callback(null, 'done');
+ * }
+ */
+},{"./internal/once":40,"./internal/onlyOnce":41,"./internal/slice":46,"./internal/wrapAsync":48,"lodash/isArray":495,"lodash/noop":504}],58:[function(require,module,exports){
+'use strict';
+
+Object.defineProperty(exports, "__esModule", {
+    value: true
+});
+exports.default = whilst;
+
+var _noop = require('lodash/noop');
+
+var _noop2 = _interopRequireDefault(_noop);
+
+var _slice = require('./internal/slice');
+
+var _slice2 = _interopRequireDefault(_slice);
+
+var _onlyOnce = require('./internal/onlyOnce');
+
+var _onlyOnce2 = _interopRequireDefault(_onlyOnce);
+
+var _wrapAsync = require('./internal/wrapAsync');
+
+var _wrapAsync2 = _interopRequireDefault(_wrapAsync);
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+/**
+ * Repeatedly call `iteratee`, while `test` returns `true`. Calls `callback` when
+ * stopped, or an error occurs.
+ *
+ * @name whilst
+ * @static
+ * @memberOf module:ControlFlow
+ * @method
+ * @category Control Flow
+ * @param {Function} test - synchronous truth test to perform before each
+ * execution of `iteratee`. Invoked with ().
+ * @param {AsyncFunction} iteratee - An async function which is called each time
+ * `test` passes. Invoked with (callback).
+ * @param {Function} [callback] - A callback which is called after the test
+ * function has failed and repeated execution of `iteratee` has stopped. `callback`
+ * will be passed an error and any arguments passed to the final `iteratee`'s
+ * callback. Invoked with (err, [results]);
+ * @returns undefined
+ * @example
+ *
+ * var count = 0;
+ * async.whilst(
+ *     function() { return count < 5; },
+ *     function(callback) {
+ *         count++;
+ *         setTimeout(function() {
+ *             callback(null, count);
+ *         }, 1000);
+ *     },
+ *     function (err, n) {
+ *         // 5 seconds have passed, n = 5
+ *     }
+ * );
+ */
+function whilst(test, iteratee, callback) {
+    callback = (0, _onlyOnce2.default)(callback || _noop2.default);
+    var _iteratee = (0, _wrapAsync2.default)(iteratee);
+    if (!test()) return callback(null);
+    var next = function (err /*, ...args*/) {
+        if (err) return callback(err);
+        if (test()) return _iteratee(next);
+        var args = (0, _slice2.default)(arguments, 1);
+        callback.apply(null, [null].concat(args));
+    };
+    _iteratee(next);
+}
+module.exports = exports['default'];
+},{"./internal/onlyOnce":41,"./internal/slice":46,"./internal/wrapAsync":48,"lodash/noop":504}],59:[function(require,module,exports){
 
 /**
  * Expose `Backoff`.
@@ -1919,7 +4224,7 @@ Backoff.prototype.setJitter = function(jitter){
 };
 
 
-},{}],19:[function(require,module,exports){
+},{}],60:[function(require,module,exports){
 (function (Buffer){
 // base-x encoding
 // Forked from https://github.com/cryptocoinjs/bs58
@@ -2012,7 +4317,7 @@ module.exports = function base (ALPHABET) {
 }
 
 }).call(this,require("buffer").Buffer)
-},{"buffer":1013}],20:[function(require,module,exports){
+},{"buffer":718}],61:[function(require,module,exports){
 "use strict";
 
 /**
@@ -2326,7 +4631,7 @@ exports.crockford = crockford;
 exports.rfc4648 = rfc4648;
 exports.base32hex = base32hex;
 
-},{}],21:[function(require,module,exports){
+},{}],62:[function(require,module,exports){
 /*
  * base64-arraybuffer
  * https://github.com/niklasvh/base64-arraybuffer
@@ -2395,7 +4700,7 @@ exports.base32hex = base32hex;
   };
 })();
 
-},{}],22:[function(require,module,exports){
+},{}],63:[function(require,module,exports){
 /*! bignumber.js v3.0.1 https://github.com/MikeMcl/bignumber.js/LICENCE */
 
 ;(function (globalObj) {
@@ -5140,7 +7445,7 @@ exports.base32hex = base32hex;
     }
 })(this);
 
-},{}],23:[function(require,module,exports){
+},{}],64:[function(require,module,exports){
 // Reference https://github.com/bitcoin/bips/blob/master/bip-0066.mediawiki
 // Format: 0x30 [total-length] 0x02 [R-length] [R] 0x02 [S-length] [S]
 // NOTE: SIGHASH byte ignored AND restricted, truncate before use
@@ -5255,7 +7560,7 @@ module.exports = {
   encode: encode
 }
 
-},{"safe-buffer":948}],24:[function(require,module,exports){
+},{"safe-buffer":656}],65:[function(require,module,exports){
 // Blake2B in pure Javascript
 // Adapted from the reference implementation in RFC7693
 // Ported to Javascript by DC - https://github.com/dcposch
@@ -5530,7 +7835,7 @@ module.exports = {
   blake2bFinal: blake2bFinal
 }
 
-},{"./util":27}],25:[function(require,module,exports){
+},{"./util":68}],66:[function(require,module,exports){
 // BLAKE2s hash function in pure Javascript
 // Adapted from the reference implementation in RFC7693
 // Ported to Javascript by DC - https://github.com/dcposch
@@ -5722,7 +8027,7 @@ module.exports = {
   blake2sFinal: blake2sFinal
 }
 
-},{"./util":27}],26:[function(require,module,exports){
+},{"./util":68}],67:[function(require,module,exports){
 var b2b = require('./blake2b')
 var b2s = require('./blake2s')
 
@@ -5739,7 +8044,7 @@ module.exports = {
   blake2sFinal: b2s.blake2sFinal
 }
 
-},{"./blake2b":24,"./blake2s":25}],27:[function(require,module,exports){
+},{"./blake2b":65,"./blake2s":66}],68:[function(require,module,exports){
 (function (Buffer){
 var ERROR_MSG_INPUT = 'Input must be an string, Buffer or Uint8Array'
 
@@ -5824,7 +8129,7 @@ module.exports = {
 }
 
 }).call(this,require("buffer").Buffer)
-},{"buffer":1013}],28:[function(require,module,exports){
+},{"buffer":718}],69:[function(require,module,exports){
 (function (global){
 /**
  * Create a blob builder even when vendor prefixes exist
@@ -5924,7 +8229,7 @@ module.exports = (function() {
 })();
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],29:[function(require,module,exports){
+},{}],70:[function(require,module,exports){
 (function (module, exports) {
   'use strict';
 
@@ -9353,7 +11658,7 @@ module.exports = (function() {
   };
 })(typeof module === 'undefined' || module, this);
 
-},{"buffer":1012}],30:[function(require,module,exports){
+},{"buffer":717}],71:[function(require,module,exports){
 'use strict'
 
 const Bignumber = require('bignumber.js')
@@ -9428,7 +11733,7 @@ exports.PARENT = {
   UTF8_STRING: 5
 }
 
-},{"bignumber.js":22}],31:[function(require,module,exports){
+},{"bignumber.js":63}],72:[function(require,module,exports){
 module.exports = function decodeAsm (stdlib, foreign, buffer) {
   'use asm'
 
@@ -10715,7 +13020,7 @@ module.exports = function decodeAsm (stdlib, foreign, buffer) {
   }
 }
 
-},{}],32:[function(require,module,exports){
+},{}],73:[function(require,module,exports){
 (function (global,Buffer){
 'use strict'
 
@@ -11341,7 +13646,7 @@ Decoder.decodeFirst = Decoder.decode
 module.exports = Decoder
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {},require("buffer").Buffer)
-},{"./constants":30,"./decoder.asm":31,"./simple":36,"./tagged":37,"./utils":38,"bignumber.js":22,"buffer":1013,"ieee754":179,"url":1045}],33:[function(require,module,exports){
+},{"./constants":71,"./decoder.asm":72,"./simple":77,"./tagged":78,"./utils":79,"bignumber.js":63,"buffer":718,"ieee754":198,"url":750}],74:[function(require,module,exports){
 (function (Buffer){
 'use strict'
 
@@ -11524,7 +13829,7 @@ function collectObject (val) {
 }
 
 }).call(this,require("buffer").Buffer)
-},{"./decoder":32,"./utils":38,"buffer":1013}],34:[function(require,module,exports){
+},{"./decoder":73,"./utils":79,"buffer":718}],75:[function(require,module,exports){
 (function (Buffer){
 'use strict'
 
@@ -12037,7 +14342,7 @@ class Encoder {
 module.exports = Encoder
 
 }).call(this,require("buffer").Buffer)
-},{"./constants":30,"./utils":38,"bignumber.js":22,"buffer":1013,"url":1045}],35:[function(require,module,exports){
+},{"./constants":71,"./utils":79,"bignumber.js":63,"buffer":718,"url":750}],76:[function(require,module,exports){
 'use strict'
 
 // exports.Commented = require('./commented')
@@ -12061,7 +14366,7 @@ exports.leveldb = {
   name: 'cbor'
 }
 
-},{"./decoder":32,"./diagnose":33,"./encoder":34,"./simple":36,"./tagged":37}],36:[function(require,module,exports){
+},{"./decoder":73,"./diagnose":74,"./encoder":75,"./simple":77,"./tagged":78}],77:[function(require,module,exports){
 'use strict'
 
 const constants = require('./constants')
@@ -12170,7 +14475,7 @@ class Simple {
 
 module.exports = Simple
 
-},{"./constants":30}],37:[function(require,module,exports){
+},{"./constants":71}],78:[function(require,module,exports){
 'use strict'
 
 /**
@@ -12251,7 +14556,7 @@ class Tagged {
 
 module.exports = Tagged
 
-},{}],38:[function(require,module,exports){
+},{}],79:[function(require,module,exports){
 (function (Buffer){
 'use strict'
 
@@ -12428,7 +14733,7 @@ exports.nextPowerOf2 = (n) => {
 }
 
 }).call(this,require("buffer").Buffer)
-},{"./constants":30,"bignumber.js":22,"buffer":1013}],39:[function(require,module,exports){
+},{"./constants":71,"bignumber.js":63,"buffer":718}],80:[function(require,module,exports){
 var r;
 
 module.exports = function rand(len) {
@@ -12495,7 +14800,7 @@ if (typeof self === 'object') {
   }
 }
 
-},{"crypto":1012}],40:[function(require,module,exports){
+},{"crypto":717}],81:[function(require,module,exports){
 // based on the aes implimentation in triple sec
 // https://github.com/keybase/triplesec
 // which is in turn based on the one from crypto-js
@@ -12725,7 +15030,7 @@ AES.prototype.scrub = function () {
 
 module.exports.AES = AES
 
-},{"safe-buffer":948}],41:[function(require,module,exports){
+},{"safe-buffer":656}],82:[function(require,module,exports){
 var aes = require('./aes')
 var Buffer = require('safe-buffer').Buffer
 var Transform = require('cipher-base')
@@ -12819,7 +15124,7 @@ StreamCipher.prototype.setAAD = function setAAD (buf) {
 
 module.exports = StreamCipher
 
-},{"./aes":40,"./ghash":45,"buffer-xor":60,"cipher-base":62,"inherits":181,"safe-buffer":948}],42:[function(require,module,exports){
+},{"./aes":81,"./ghash":86,"buffer-xor":101,"cipher-base":103,"inherits":200,"safe-buffer":656}],83:[function(require,module,exports){
 var ciphers = require('./encrypter')
 var deciphers = require('./decrypter')
 var modes = require('./modes/list.json')
@@ -12834,7 +15139,7 @@ exports.createDecipher = exports.Decipher = deciphers.createDecipher
 exports.createDecipheriv = exports.Decipheriv = deciphers.createDecipheriv
 exports.listCiphers = exports.getCiphers = getCiphers
 
-},{"./decrypter":43,"./encrypter":44,"./modes/list.json":53}],43:[function(require,module,exports){
+},{"./decrypter":84,"./encrypter":85,"./modes/list.json":94}],84:[function(require,module,exports){
 var AuthCipher = require('./authCipher')
 var Buffer = require('safe-buffer').Buffer
 var MODES = require('./modes')
@@ -12957,7 +15262,7 @@ function createDecipher (suite, password) {
 exports.createDecipher = createDecipher
 exports.createDecipheriv = createDecipheriv
 
-},{"./aes":40,"./authCipher":41,"./modes":52,"./streamCipher":55,"cipher-base":62,"evp_bytestokey":157,"inherits":181,"safe-buffer":948}],44:[function(require,module,exports){
+},{"./aes":81,"./authCipher":82,"./modes":93,"./streamCipher":96,"cipher-base":103,"evp_bytestokey":176,"inherits":200,"safe-buffer":656}],85:[function(require,module,exports){
 var MODES = require('./modes')
 var AuthCipher = require('./authCipher')
 var Buffer = require('safe-buffer').Buffer
@@ -13073,7 +15378,7 @@ function createCipher (suite, password) {
 exports.createCipheriv = createCipheriv
 exports.createCipher = createCipher
 
-},{"./aes":40,"./authCipher":41,"./modes":52,"./streamCipher":55,"cipher-base":62,"evp_bytestokey":157,"inherits":181,"safe-buffer":948}],45:[function(require,module,exports){
+},{"./aes":81,"./authCipher":82,"./modes":93,"./streamCipher":96,"cipher-base":103,"evp_bytestokey":176,"inherits":200,"safe-buffer":656}],86:[function(require,module,exports){
 var Buffer = require('safe-buffer').Buffer
 var ZEROES = Buffer.alloc(16, 0)
 
@@ -13164,7 +15469,7 @@ GHASH.prototype.final = function (abl, bl) {
 
 module.exports = GHASH
 
-},{"safe-buffer":948}],46:[function(require,module,exports){
+},{"safe-buffer":656}],87:[function(require,module,exports){
 var xor = require('buffer-xor')
 
 exports.encrypt = function (self, block) {
@@ -13183,7 +15488,7 @@ exports.decrypt = function (self, block) {
   return xor(out, pad)
 }
 
-},{"buffer-xor":60}],47:[function(require,module,exports){
+},{"buffer-xor":101}],88:[function(require,module,exports){
 var Buffer = require('safe-buffer').Buffer
 var xor = require('buffer-xor')
 
@@ -13218,7 +15523,7 @@ exports.encrypt = function (self, data, decrypt) {
   return out
 }
 
-},{"buffer-xor":60,"safe-buffer":948}],48:[function(require,module,exports){
+},{"buffer-xor":101,"safe-buffer":656}],89:[function(require,module,exports){
 var Buffer = require('safe-buffer').Buffer
 
 function encryptByte (self, byteParam, decrypt) {
@@ -13262,7 +15567,7 @@ exports.encrypt = function (self, chunk, decrypt) {
   return out
 }
 
-},{"safe-buffer":948}],49:[function(require,module,exports){
+},{"safe-buffer":656}],90:[function(require,module,exports){
 (function (Buffer){
 function encryptByte (self, byteParam, decrypt) {
   var pad = self._cipher.encryptBlock(self._prev)
@@ -13289,7 +15594,7 @@ exports.encrypt = function (self, chunk, decrypt) {
 }
 
 }).call(this,require("buffer").Buffer)
-},{"buffer":1013}],50:[function(require,module,exports){
+},{"buffer":718}],91:[function(require,module,exports){
 (function (Buffer){
 var xor = require('buffer-xor')
 
@@ -13336,7 +15641,7 @@ exports.encrypt = function (self, chunk) {
 }
 
 }).call(this,require("buffer").Buffer)
-},{"buffer":1013,"buffer-xor":60}],51:[function(require,module,exports){
+},{"buffer":718,"buffer-xor":101}],92:[function(require,module,exports){
 exports.encrypt = function (self, block) {
   return self._cipher.encryptBlock(block)
 }
@@ -13345,7 +15650,7 @@ exports.decrypt = function (self, block) {
   return self._cipher.decryptBlock(block)
 }
 
-},{}],52:[function(require,module,exports){
+},{}],93:[function(require,module,exports){
 var modeModules = {
   ECB: require('./ecb'),
   CBC: require('./cbc'),
@@ -13365,7 +15670,7 @@ for (var key in modes) {
 
 module.exports = modes
 
-},{"./cbc":46,"./cfb":47,"./cfb1":48,"./cfb8":49,"./ctr":50,"./ecb":51,"./list.json":53,"./ofb":54}],53:[function(require,module,exports){
+},{"./cbc":87,"./cfb":88,"./cfb1":89,"./cfb8":90,"./ctr":91,"./ecb":92,"./list.json":94,"./ofb":95}],94:[function(require,module,exports){
 module.exports={
   "aes-128-ecb": {
     "cipher": "AES",
@@ -13558,7 +15863,7 @@ module.exports={
   }
 }
 
-},{}],54:[function(require,module,exports){
+},{}],95:[function(require,module,exports){
 (function (Buffer){
 var xor = require('buffer-xor')
 
@@ -13578,7 +15883,7 @@ exports.encrypt = function (self, chunk) {
 }
 
 }).call(this,require("buffer").Buffer)
-},{"buffer":1013,"buffer-xor":60}],55:[function(require,module,exports){
+},{"buffer":718,"buffer-xor":101}],96:[function(require,module,exports){
 var aes = require('./aes')
 var Buffer = require('safe-buffer').Buffer
 var Transform = require('cipher-base')
@@ -13607,7 +15912,7 @@ StreamCipher.prototype._final = function () {
 
 module.exports = StreamCipher
 
-},{"./aes":40,"cipher-base":62,"inherits":181,"safe-buffer":948}],56:[function(require,module,exports){
+},{"./aes":81,"cipher-base":103,"inherits":200,"safe-buffer":656}],97:[function(require,module,exports){
 (function (Buffer){
 const Sha3 = require('js-sha3')
 
@@ -13645,7 +15950,7 @@ module.exports = {
 }
 
 }).call(this,require("buffer").Buffer)
-},{"buffer":1013,"js-sha3":57}],57:[function(require,module,exports){
+},{"buffer":718,"js-sha3":98}],98:[function(require,module,exports){
 (function (global){
 /*
  * js-sha3 v0.3.1
@@ -14081,13 +16386,13 @@ module.exports = {
 }(this));
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],58:[function(require,module,exports){
+},{}],99:[function(require,module,exports){
 var basex = require('base-x')
 var ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
 
 module.exports = basex(ALPHABET)
 
-},{"base-x":59}],59:[function(require,module,exports){
+},{"base-x":100}],100:[function(require,module,exports){
 // base-x encoding
 // Forked from https://github.com/cryptocoinjs/bs58
 // Originally written by Mike Hearn for BitcoinJ
@@ -14180,7 +16485,7 @@ module.exports = function base (ALPHABET) {
   }
 }
 
-},{"safe-buffer":948}],60:[function(require,module,exports){
+},{"safe-buffer":656}],101:[function(require,module,exports){
 (function (Buffer){
 module.exports = function xor (a, b) {
   var length = Math.min(a.length, b.length)
@@ -14194,7 +16499,7 @@ module.exports = function xor (a, b) {
 }
 
 }).call(this,require("buffer").Buffer)
-},{"buffer":1013}],61:[function(require,module,exports){
+},{"buffer":718}],102:[function(require,module,exports){
 (function (Buffer){
 'use strict'
 
@@ -14458,7 +16763,7 @@ CID.codecs = codecs
 module.exports = CID
 
 }).call(this,require("buffer").Buffer)
-},{"buffer":1013,"multibase":780,"multicodec":782,"multicodec/src/base-table":781,"multicodec/src/varint-table":785,"multihashes":787}],62:[function(require,module,exports){
+},{"buffer":718,"multibase":522,"multicodec":524,"multicodec/src/base-table":523,"multicodec/src/varint-table":527,"multihashes":529}],103:[function(require,module,exports){
 var Buffer = require('safe-buffer').Buffer
 var Transform = require('stream').Transform
 var StringDecoder = require('string_decoder').StringDecoder
@@ -14559,7 +16864,7 @@ CipherBase.prototype._toString = function (value, enc, fin) {
 
 module.exports = CipherBase
 
-},{"inherits":181,"safe-buffer":948,"stream":1043,"string_decoder":1044}],63:[function(require,module,exports){
+},{"inherits":200,"safe-buffer":656,"stream":748,"string_decoder":749}],104:[function(require,module,exports){
 /**
  * Slice reference.
  */
@@ -14584,7 +16889,7 @@ module.exports = function(obj, fn){
   }
 };
 
-},{}],64:[function(require,module,exports){
+},{}],105:[function(require,module,exports){
 
 /**
  * Expose `Emitter`.
@@ -14749,7 +17054,7 @@ Emitter.prototype.hasListeners = function(event){
   return !! this.listeners(event).length;
 };
 
-},{}],65:[function(require,module,exports){
+},{}],106:[function(require,module,exports){
 
 module.exports = function(a, b){
   var fn = function(){};
@@ -14757,7 +17062,7 @@ module.exports = function(a, b){
   a.prototype = new fn;
   a.prototype.constructor = a;
 };
-},{}],66:[function(require,module,exports){
+},{}],107:[function(require,module,exports){
 (function (Buffer){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -14867,8 +17172,8 @@ function objectToString(o) {
   return Object.prototype.toString.call(o);
 }
 
-}).call(this,{"isBuffer":require("../../../../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js")})
-},{"../../../../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js":1019}],67:[function(require,module,exports){
+}).call(this,{"isBuffer":require("../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js")})
+},{"../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js":724}],108:[function(require,module,exports){
 (function (Buffer){
 'use strict'
 var inherits = require('inherits')
@@ -14924,7 +17229,7 @@ module.exports = function createHash (alg) {
 }
 
 }).call(this,require("buffer").Buffer)
-},{"./md5":69,"buffer":1013,"cipher-base":62,"inherits":181,"ripemd160":946,"sha.js":964}],68:[function(require,module,exports){
+},{"./md5":110,"buffer":718,"cipher-base":103,"inherits":200,"ripemd160":654,"sha.js":672}],109:[function(require,module,exports){
 (function (Buffer){
 'use strict'
 var intSize = 4
@@ -14958,7 +17263,7 @@ module.exports = function hash (buf, fn) {
 }
 
 }).call(this,require("buffer").Buffer)
-},{"buffer":1013}],69:[function(require,module,exports){
+},{"buffer":718}],110:[function(require,module,exports){
 'use strict'
 /*
  * A JavaScript implementation of the RSA Data Security, Inc. MD5 Message
@@ -15111,7 +17416,7 @@ module.exports = function md5 (buf) {
   return makeHash(buf, core_md5)
 }
 
-},{"./make-hash":68}],70:[function(require,module,exports){
+},{"./make-hash":109}],111:[function(require,module,exports){
 'use strict'
 var inherits = require('inherits')
 var Legacy = require('./legacy')
@@ -15175,7 +17480,7 @@ module.exports = function createHmac (alg, key) {
   return new Hmac(alg, key)
 }
 
-},{"./legacy":71,"cipher-base":62,"create-hash/md5":69,"inherits":181,"ripemd160":946,"safe-buffer":948,"sha.js":964}],71:[function(require,module,exports){
+},{"./legacy":112,"cipher-base":103,"create-hash/md5":110,"inherits":200,"ripemd160":654,"safe-buffer":656,"sha.js":672}],112:[function(require,module,exports){
 'use strict'
 var inherits = require('inherits')
 var Buffer = require('safe-buffer').Buffer
@@ -15223,999 +17528,7 @@ Hmac.prototype._final = function () {
 }
 module.exports = Hmac
 
-},{"cipher-base":62,"inherits":181,"safe-buffer":948}],72:[function(require,module,exports){
-'use strict';
-
-Object.defineProperty(exports, "__esModule", {
-    value: true
-});
-exports.default = asyncify;
-
-var _isObject = require('lodash/isObject');
-
-var _isObject2 = _interopRequireDefault(_isObject);
-
-var _initialParams = require('./internal/initialParams');
-
-var _initialParams2 = _interopRequireDefault(_initialParams);
-
-var _setImmediate = require('./internal/setImmediate');
-
-var _setImmediate2 = _interopRequireDefault(_setImmediate);
-
-function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
-
-/**
- * Take a sync function and make it async, passing its return value to a
- * callback. This is useful for plugging sync functions into a waterfall,
- * series, or other async functions. Any arguments passed to the generated
- * function will be passed to the wrapped function (except for the final
- * callback argument). Errors thrown will be passed to the callback.
- *
- * If the function passed to `asyncify` returns a Promise, that promises's
- * resolved/rejected state will be used to call the callback, rather than simply
- * the synchronous return value.
- *
- * This also means you can asyncify ES2017 `async` functions.
- *
- * @name asyncify
- * @static
- * @memberOf module:Utils
- * @method
- * @alias wrapSync
- * @category Util
- * @param {Function} func - The synchronous function, or Promise-returning
- * function to convert to an {@link AsyncFunction}.
- * @returns {AsyncFunction} An asynchronous wrapper of the `func`. To be
- * invoked with `(args..., callback)`.
- * @example
- *
- * // passing a regular synchronous function
- * async.waterfall([
- *     async.apply(fs.readFile, filename, "utf8"),
- *     async.asyncify(JSON.parse),
- *     function (data, next) {
- *         // data is the result of parsing the text.
- *         // If there was a parsing error, it would have been caught.
- *     }
- * ], callback);
- *
- * // passing a function returning a promise
- * async.waterfall([
- *     async.apply(fs.readFile, filename, "utf8"),
- *     async.asyncify(function (contents) {
- *         return db.model.create(contents);
- *     }),
- *     function (model, next) {
- *         // `model` is the instantiated model object.
- *         // If there was an error, this function would be skipped.
- *     }
- * ], callback);
- *
- * // es2017 example, though `asyncify` is not needed if your JS environment
- * // supports async functions out of the box
- * var q = async.queue(async.asyncify(async function(file) {
- *     var intermediateStep = await processFile(file);
- *     return await somePromise(intermediateStep)
- * }));
- *
- * q.push(files);
- */
-function asyncify(func) {
-    return (0, _initialParams2.default)(function (args, callback) {
-        var result;
-        try {
-            result = func.apply(this, args);
-        } catch (e) {
-            return callback(e);
-        }
-        // if result is Promise object
-        if ((0, _isObject2.default)(result) && typeof result.then === 'function') {
-            result.then(function (value) {
-                invokeCallback(callback, null, value);
-            }, function (err) {
-                invokeCallback(callback, err.message ? err : new Error(err));
-            });
-        } else {
-            callback(null, result);
-        }
-    });
-}
-
-function invokeCallback(callback, error, value) {
-    try {
-        callback(error, value);
-    } catch (e) {
-        (0, _setImmediate2.default)(rethrow, e);
-    }
-}
-
-function rethrow(error) {
-    throw error;
-}
-module.exports = exports['default'];
-},{"./internal/initialParams":80,"./internal/setImmediate":85,"lodash/isObject":758}],73:[function(require,module,exports){
-'use strict';
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-exports.default = eachLimit;
-
-var _eachOf = require('./eachOf');
-
-var _eachOf2 = _interopRequireDefault(_eachOf);
-
-var _withoutIndex = require('./internal/withoutIndex');
-
-var _withoutIndex2 = _interopRequireDefault(_withoutIndex);
-
-var _wrapAsync = require('./internal/wrapAsync');
-
-var _wrapAsync2 = _interopRequireDefault(_wrapAsync);
-
-function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
-
-/**
- * Applies the function `iteratee` to each item in `coll`, in parallel.
- * The `iteratee` is called with an item from the list, and a callback for when
- * it has finished. If the `iteratee` passes an error to its `callback`, the
- * main `callback` (for the `each` function) is immediately called with the
- * error.
- *
- * Note, that since this function applies `iteratee` to each item in parallel,
- * there is no guarantee that the iteratee functions will complete in order.
- *
- * @name each
- * @static
- * @memberOf module:Collections
- * @method
- * @alias forEach
- * @category Collection
- * @param {Array|Iterable|Object} coll - A collection to iterate over.
- * @param {AsyncFunction} iteratee - An async function to apply to
- * each item in `coll`. Invoked with (item, callback).
- * The array index is not passed to the iteratee.
- * If you need the index, use `eachOf`.
- * @param {Function} [callback] - A callback which is called when all
- * `iteratee` functions have finished, or an error occurs. Invoked with (err).
- * @example
- *
- * // assuming openFiles is an array of file names and saveFile is a function
- * // to save the modified contents of that file:
- *
- * async.each(openFiles, saveFile, function(err){
- *   // if any of the saves produced an error, err would equal that error
- * });
- *
- * // assuming openFiles is an array of file names
- * async.each(openFiles, function(file, callback) {
- *
- *     // Perform operation on file here.
- *     console.log('Processing file ' + file);
- *
- *     if( file.length > 32 ) {
- *       console.log('This file name is too long');
- *       callback('File name too long');
- *     } else {
- *       // Do work to process file here
- *       console.log('File processed');
- *       callback();
- *     }
- * }, function(err) {
- *     // if any of the file processing produced an error, err would equal that error
- *     if( err ) {
- *       // One of the iterations produced an error.
- *       // All processing will now stop.
- *       console.log('A file failed to process');
- *     } else {
- *       console.log('All files have been processed successfully');
- *     }
- * });
- */
-function eachLimit(coll, iteratee, callback) {
-  (0, _eachOf2.default)(coll, (0, _withoutIndex2.default)((0, _wrapAsync2.default)(iteratee)), callback);
-}
-module.exports = exports['default'];
-},{"./eachOf":74,"./internal/withoutIndex":87,"./internal/wrapAsync":88}],74:[function(require,module,exports){
-'use strict';
-
-Object.defineProperty(exports, "__esModule", {
-    value: true
-});
-
-exports.default = function (coll, iteratee, callback) {
-    var eachOfImplementation = (0, _isArrayLike2.default)(coll) ? eachOfArrayLike : eachOfGeneric;
-    eachOfImplementation(coll, (0, _wrapAsync2.default)(iteratee), callback);
-};
-
-var _isArrayLike = require('lodash/isArrayLike');
-
-var _isArrayLike2 = _interopRequireDefault(_isArrayLike);
-
-var _breakLoop = require('./internal/breakLoop');
-
-var _breakLoop2 = _interopRequireDefault(_breakLoop);
-
-var _eachOfLimit = require('./eachOfLimit');
-
-var _eachOfLimit2 = _interopRequireDefault(_eachOfLimit);
-
-var _doLimit = require('./internal/doLimit');
-
-var _doLimit2 = _interopRequireDefault(_doLimit);
-
-var _noop = require('lodash/noop');
-
-var _noop2 = _interopRequireDefault(_noop);
-
-var _once = require('./internal/once');
-
-var _once2 = _interopRequireDefault(_once);
-
-var _onlyOnce = require('./internal/onlyOnce');
-
-var _onlyOnce2 = _interopRequireDefault(_onlyOnce);
-
-var _wrapAsync = require('./internal/wrapAsync');
-
-var _wrapAsync2 = _interopRequireDefault(_wrapAsync);
-
-function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
-
-// eachOf implementation optimized for array-likes
-function eachOfArrayLike(coll, iteratee, callback) {
-    callback = (0, _once2.default)(callback || _noop2.default);
-    var index = 0,
-        completed = 0,
-        length = coll.length;
-    if (length === 0) {
-        callback(null);
-    }
-
-    function iteratorCallback(err, value) {
-        if (err) {
-            callback(err);
-        } else if (++completed === length || value === _breakLoop2.default) {
-            callback(null);
-        }
-    }
-
-    for (; index < length; index++) {
-        iteratee(coll[index], index, (0, _onlyOnce2.default)(iteratorCallback));
-    }
-}
-
-// a generic version of eachOf which can handle array, object, and iterator cases.
-var eachOfGeneric = (0, _doLimit2.default)(_eachOfLimit2.default, Infinity);
-
-/**
- * Like [`each`]{@link module:Collections.each}, except that it passes the key (or index) as the second argument
- * to the iteratee.
- *
- * @name eachOf
- * @static
- * @memberOf module:Collections
- * @method
- * @alias forEachOf
- * @category Collection
- * @see [async.each]{@link module:Collections.each}
- * @param {Array|Iterable|Object} coll - A collection to iterate over.
- * @param {AsyncFunction} iteratee - A function to apply to each
- * item in `coll`.
- * The `key` is the item's key, or index in the case of an array.
- * Invoked with (item, key, callback).
- * @param {Function} [callback] - A callback which is called when all
- * `iteratee` functions have finished, or an error occurs. Invoked with (err).
- * @example
- *
- * var obj = {dev: "/dev.json", test: "/test.json", prod: "/prod.json"};
- * var configs = {};
- *
- * async.forEachOf(obj, function (value, key, callback) {
- *     fs.readFile(__dirname + value, "utf8", function (err, data) {
- *         if (err) return callback(err);
- *         try {
- *             configs[key] = JSON.parse(data);
- *         } catch (e) {
- *             return callback(e);
- *         }
- *         callback();
- *     });
- * }, function (err) {
- *     if (err) console.error(err.message);
- *     // configs is now a map of JSON data
- *     doSomethingWith(configs);
- * });
- */
-module.exports = exports['default'];
-},{"./eachOfLimit":75,"./internal/breakLoop":76,"./internal/doLimit":77,"./internal/once":82,"./internal/onlyOnce":83,"./internal/wrapAsync":88,"lodash/isArrayLike":754,"lodash/noop":762}],75:[function(require,module,exports){
-'use strict';
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-exports.default = eachOfLimit;
-
-var _eachOfLimit2 = require('./internal/eachOfLimit');
-
-var _eachOfLimit3 = _interopRequireDefault(_eachOfLimit2);
-
-var _wrapAsync = require('./internal/wrapAsync');
-
-var _wrapAsync2 = _interopRequireDefault(_wrapAsync);
-
-function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
-
-/**
- * The same as [`eachOf`]{@link module:Collections.eachOf} but runs a maximum of `limit` async operations at a
- * time.
- *
- * @name eachOfLimit
- * @static
- * @memberOf module:Collections
- * @method
- * @see [async.eachOf]{@link module:Collections.eachOf}
- * @alias forEachOfLimit
- * @category Collection
- * @param {Array|Iterable|Object} coll - A collection to iterate over.
- * @param {number} limit - The maximum number of async operations at a time.
- * @param {AsyncFunction} iteratee - An async function to apply to each
- * item in `coll`. The `key` is the item's key, or index in the case of an
- * array.
- * Invoked with (item, key, callback).
- * @param {Function} [callback] - A callback which is called when all
- * `iteratee` functions have finished, or an error occurs. Invoked with (err).
- */
-function eachOfLimit(coll, limit, iteratee, callback) {
-  (0, _eachOfLimit3.default)(limit)(coll, (0, _wrapAsync2.default)(iteratee), callback);
-}
-module.exports = exports['default'];
-},{"./internal/eachOfLimit":78,"./internal/wrapAsync":88}],76:[function(require,module,exports){
-"use strict";
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-// A temporary value used to identify if the loop should be broken.
-// See #1064, #1293
-exports.default = {};
-module.exports = exports["default"];
-},{}],77:[function(require,module,exports){
-"use strict";
-
-Object.defineProperty(exports, "__esModule", {
-    value: true
-});
-exports.default = doLimit;
-function doLimit(fn, limit) {
-    return function (iterable, iteratee, callback) {
-        return fn(iterable, limit, iteratee, callback);
-    };
-}
-module.exports = exports["default"];
-},{}],78:[function(require,module,exports){
-'use strict';
-
-Object.defineProperty(exports, "__esModule", {
-    value: true
-});
-exports.default = _eachOfLimit;
-
-var _noop = require('lodash/noop');
-
-var _noop2 = _interopRequireDefault(_noop);
-
-var _once = require('./once');
-
-var _once2 = _interopRequireDefault(_once);
-
-var _iterator = require('./iterator');
-
-var _iterator2 = _interopRequireDefault(_iterator);
-
-var _onlyOnce = require('./onlyOnce');
-
-var _onlyOnce2 = _interopRequireDefault(_onlyOnce);
-
-var _breakLoop = require('./breakLoop');
-
-var _breakLoop2 = _interopRequireDefault(_breakLoop);
-
-function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
-
-function _eachOfLimit(limit) {
-    return function (obj, iteratee, callback) {
-        callback = (0, _once2.default)(callback || _noop2.default);
-        if (limit <= 0 || !obj) {
-            return callback(null);
-        }
-        var nextElem = (0, _iterator2.default)(obj);
-        var done = false;
-        var running = 0;
-
-        function iterateeCallback(err, value) {
-            running -= 1;
-            if (err) {
-                done = true;
-                callback(err);
-            } else if (value === _breakLoop2.default || done && running <= 0) {
-                done = true;
-                return callback(null);
-            } else {
-                replenish();
-            }
-        }
-
-        function replenish() {
-            while (running < limit && !done) {
-                var elem = nextElem();
-                if (elem === null) {
-                    done = true;
-                    if (running <= 0) {
-                        callback(null);
-                    }
-                    return;
-                }
-                running += 1;
-                iteratee(elem.value, elem.key, (0, _onlyOnce2.default)(iterateeCallback));
-            }
-        }
-
-        replenish();
-    };
-}
-module.exports = exports['default'];
-},{"./breakLoop":76,"./iterator":81,"./once":82,"./onlyOnce":83,"lodash/noop":762}],79:[function(require,module,exports){
-'use strict';
-
-Object.defineProperty(exports, "__esModule", {
-    value: true
-});
-
-exports.default = function (coll) {
-    return iteratorSymbol && coll[iteratorSymbol] && coll[iteratorSymbol]();
-};
-
-var iteratorSymbol = typeof Symbol === 'function' && Symbol.iterator;
-
-module.exports = exports['default'];
-},{}],80:[function(require,module,exports){
-'use strict';
-
-Object.defineProperty(exports, "__esModule", {
-    value: true
-});
-
-exports.default = function (fn) {
-    return function () /*...args, callback*/{
-        var args = (0, _slice2.default)(arguments);
-        var callback = args.pop();
-        fn.call(this, args, callback);
-    };
-};
-
-var _slice = require('./slice');
-
-var _slice2 = _interopRequireDefault(_slice);
-
-function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
-
-module.exports = exports['default'];
-},{"./slice":86}],81:[function(require,module,exports){
-'use strict';
-
-Object.defineProperty(exports, "__esModule", {
-    value: true
-});
-exports.default = iterator;
-
-var _isArrayLike = require('lodash/isArrayLike');
-
-var _isArrayLike2 = _interopRequireDefault(_isArrayLike);
-
-var _getIterator = require('./getIterator');
-
-var _getIterator2 = _interopRequireDefault(_getIterator);
-
-var _keys = require('lodash/keys');
-
-var _keys2 = _interopRequireDefault(_keys);
-
-function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
-
-function createArrayIterator(coll) {
-    var i = -1;
-    var len = coll.length;
-    return function next() {
-        return ++i < len ? { value: coll[i], key: i } : null;
-    };
-}
-
-function createES2015Iterator(iterator) {
-    var i = -1;
-    return function next() {
-        var item = iterator.next();
-        if (item.done) return null;
-        i++;
-        return { value: item.value, key: i };
-    };
-}
-
-function createObjectIterator(obj) {
-    var okeys = (0, _keys2.default)(obj);
-    var i = -1;
-    var len = okeys.length;
-    return function next() {
-        var key = okeys[++i];
-        return i < len ? { value: obj[key], key: key } : null;
-    };
-}
-
-function iterator(coll) {
-    if ((0, _isArrayLike2.default)(coll)) {
-        return createArrayIterator(coll);
-    }
-
-    var iterator = (0, _getIterator2.default)(coll);
-    return iterator ? createES2015Iterator(iterator) : createObjectIterator(coll);
-}
-module.exports = exports['default'];
-},{"./getIterator":79,"lodash/isArrayLike":754,"lodash/keys":761}],82:[function(require,module,exports){
-"use strict";
-
-Object.defineProperty(exports, "__esModule", {
-    value: true
-});
-exports.default = once;
-function once(fn) {
-    return function () {
-        if (fn === null) return;
-        var callFn = fn;
-        fn = null;
-        callFn.apply(this, arguments);
-    };
-}
-module.exports = exports["default"];
-},{}],83:[function(require,module,exports){
-"use strict";
-
-Object.defineProperty(exports, "__esModule", {
-    value: true
-});
-exports.default = onlyOnce;
-function onlyOnce(fn) {
-    return function () {
-        if (fn === null) throw new Error("Callback was already called.");
-        var callFn = fn;
-        fn = null;
-        callFn.apply(this, arguments);
-    };
-}
-module.exports = exports["default"];
-},{}],84:[function(require,module,exports){
-'use strict';
-
-Object.defineProperty(exports, "__esModule", {
-    value: true
-});
-exports.default = _parallel;
-
-var _noop = require('lodash/noop');
-
-var _noop2 = _interopRequireDefault(_noop);
-
-var _isArrayLike = require('lodash/isArrayLike');
-
-var _isArrayLike2 = _interopRequireDefault(_isArrayLike);
-
-var _slice = require('./slice');
-
-var _slice2 = _interopRequireDefault(_slice);
-
-var _wrapAsync = require('./wrapAsync');
-
-var _wrapAsync2 = _interopRequireDefault(_wrapAsync);
-
-function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
-
-function _parallel(eachfn, tasks, callback) {
-    callback = callback || _noop2.default;
-    var results = (0, _isArrayLike2.default)(tasks) ? [] : {};
-
-    eachfn(tasks, function (task, key, callback) {
-        (0, _wrapAsync2.default)(task)(function (err, result) {
-            if (arguments.length > 2) {
-                result = (0, _slice2.default)(arguments, 1);
-            }
-            results[key] = result;
-            callback(err);
-        });
-    }, function (err) {
-        callback(err, results);
-    });
-}
-module.exports = exports['default'];
-},{"./slice":86,"./wrapAsync":88,"lodash/isArrayLike":754,"lodash/noop":762}],85:[function(require,module,exports){
-(function (process){
-'use strict';
-
-Object.defineProperty(exports, "__esModule", {
-    value: true
-});
-exports.hasNextTick = exports.hasSetImmediate = undefined;
-exports.fallback = fallback;
-exports.wrap = wrap;
-
-var _slice = require('./slice');
-
-var _slice2 = _interopRequireDefault(_slice);
-
-function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
-
-var hasSetImmediate = exports.hasSetImmediate = typeof setImmediate === 'function' && setImmediate;
-var hasNextTick = exports.hasNextTick = typeof process === 'object' && typeof process.nextTick === 'function';
-
-function fallback(fn) {
-    setTimeout(fn, 0);
-}
-
-function wrap(defer) {
-    return function (fn /*, ...args*/) {
-        var args = (0, _slice2.default)(arguments, 1);
-        defer(function () {
-            fn.apply(null, args);
-        });
-    };
-}
-
-var _defer;
-
-if (hasSetImmediate) {
-    _defer = setImmediate;
-} else if (hasNextTick) {
-    _defer = process.nextTick;
-} else {
-    _defer = fallback;
-}
-
-exports.default = wrap(_defer);
-}).call(this,require('_process'))
-},{"./slice":86,"_process":1024}],86:[function(require,module,exports){
-"use strict";
-
-Object.defineProperty(exports, "__esModule", {
-    value: true
-});
-exports.default = slice;
-function slice(arrayLike, start) {
-    start = start | 0;
-    var newLen = Math.max(arrayLike.length - start, 0);
-    var newArr = Array(newLen);
-    for (var idx = 0; idx < newLen; idx++) {
-        newArr[idx] = arrayLike[start + idx];
-    }
-    return newArr;
-}
-module.exports = exports["default"];
-},{}],87:[function(require,module,exports){
-"use strict";
-
-Object.defineProperty(exports, "__esModule", {
-    value: true
-});
-exports.default = _withoutIndex;
-function _withoutIndex(iteratee) {
-    return function (value, index, callback) {
-        return iteratee(value, callback);
-    };
-}
-module.exports = exports["default"];
-},{}],88:[function(require,module,exports){
-'use strict';
-
-Object.defineProperty(exports, "__esModule", {
-    value: true
-});
-exports.isAsync = undefined;
-
-var _asyncify = require('../asyncify');
-
-var _asyncify2 = _interopRequireDefault(_asyncify);
-
-function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
-
-var supportsSymbol = typeof Symbol === 'function';
-
-function isAsync(fn) {
-    return supportsSymbol && fn[Symbol.toStringTag] === 'AsyncFunction';
-}
-
-function wrapAsync(asyncFn) {
-    return isAsync(asyncFn) ? (0, _asyncify2.default)(asyncFn) : asyncFn;
-}
-
-exports.default = wrapAsync;
-exports.isAsync = isAsync;
-},{"../asyncify":72}],89:[function(require,module,exports){
-'use strict';
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-exports.default = parallelLimit;
-
-var _eachOf = require('./eachOf');
-
-var _eachOf2 = _interopRequireDefault(_eachOf);
-
-var _parallel = require('./internal/parallel');
-
-var _parallel2 = _interopRequireDefault(_parallel);
-
-function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
-
-/**
- * Run the `tasks` collection of functions in parallel, without waiting until
- * the previous function has completed. If any of the functions pass an error to
- * its callback, the main `callback` is immediately called with the value of the
- * error. Once the `tasks` have completed, the results are passed to the final
- * `callback` as an array.
- *
- * **Note:** `parallel` is about kicking-off I/O tasks in parallel, not about
- * parallel execution of code.  If your tasks do not use any timers or perform
- * any I/O, they will actually be executed in series.  Any synchronous setup
- * sections for each task will happen one after the other.  JavaScript remains
- * single-threaded.
- *
- * **Hint:** Use [`reflect`]{@link module:Utils.reflect} to continue the
- * execution of other tasks when a task fails.
- *
- * It is also possible to use an object instead of an array. Each property will
- * be run as a function and the results will be passed to the final `callback`
- * as an object instead of an array. This can be a more readable way of handling
- * results from {@link async.parallel}.
- *
- * @name parallel
- * @static
- * @memberOf module:ControlFlow
- * @method
- * @category Control Flow
- * @param {Array|Iterable|Object} tasks - A collection of
- * [async functions]{@link AsyncFunction} to run.
- * Each async function can complete with any number of optional `result` values.
- * @param {Function} [callback] - An optional callback to run once all the
- * functions have completed successfully. This function gets a results array
- * (or object) containing all the result arguments passed to the task callbacks.
- * Invoked with (err, results).
- *
- * @example
- * async.parallel([
- *     function(callback) {
- *         setTimeout(function() {
- *             callback(null, 'one');
- *         }, 200);
- *     },
- *     function(callback) {
- *         setTimeout(function() {
- *             callback(null, 'two');
- *         }, 100);
- *     }
- * ],
- * // optional callback
- * function(err, results) {
- *     // the results array will equal ['one','two'] even though
- *     // the second function had a shorter timeout.
- * });
- *
- * // an example using an object instead of an array
- * async.parallel({
- *     one: function(callback) {
- *         setTimeout(function() {
- *             callback(null, 1);
- *         }, 200);
- *     },
- *     two: function(callback) {
- *         setTimeout(function() {
- *             callback(null, 2);
- *         }, 100);
- *     }
- * }, function(err, results) {
- *     // results is now equals to: {one: 1, two: 2}
- * });
- */
-function parallelLimit(tasks, callback) {
-  (0, _parallel2.default)(_eachOf2.default, tasks, callback);
-}
-module.exports = exports['default'];
-},{"./eachOf":74,"./internal/parallel":84}],90:[function(require,module,exports){
-'use strict';
-
-Object.defineProperty(exports, "__esModule", {
-    value: true
-});
-
-exports.default = function (tasks, callback) {
-    callback = (0, _once2.default)(callback || _noop2.default);
-    if (!(0, _isArray2.default)(tasks)) return callback(new Error('First argument to waterfall must be an array of functions'));
-    if (!tasks.length) return callback();
-    var taskIndex = 0;
-
-    function nextTask(args) {
-        var task = (0, _wrapAsync2.default)(tasks[taskIndex++]);
-        args.push((0, _onlyOnce2.default)(next));
-        task.apply(null, args);
-    }
-
-    function next(err /*, ...args*/) {
-        if (err || taskIndex === tasks.length) {
-            return callback.apply(null, arguments);
-        }
-        nextTask((0, _slice2.default)(arguments, 1));
-    }
-
-    nextTask([]);
-};
-
-var _isArray = require('lodash/isArray');
-
-var _isArray2 = _interopRequireDefault(_isArray);
-
-var _noop = require('lodash/noop');
-
-var _noop2 = _interopRequireDefault(_noop);
-
-var _once = require('./internal/once');
-
-var _once2 = _interopRequireDefault(_once);
-
-var _slice = require('./internal/slice');
-
-var _slice2 = _interopRequireDefault(_slice);
-
-var _onlyOnce = require('./internal/onlyOnce');
-
-var _onlyOnce2 = _interopRequireDefault(_onlyOnce);
-
-var _wrapAsync = require('./internal/wrapAsync');
-
-var _wrapAsync2 = _interopRequireDefault(_wrapAsync);
-
-function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
-
-module.exports = exports['default'];
-
-/**
- * Runs the `tasks` array of functions in series, each passing their results to
- * the next in the array. However, if any of the `tasks` pass an error to their
- * own callback, the next function is not executed, and the main `callback` is
- * immediately called with the error.
- *
- * @name waterfall
- * @static
- * @memberOf module:ControlFlow
- * @method
- * @category Control Flow
- * @param {Array} tasks - An array of [async functions]{@link AsyncFunction}
- * to run.
- * Each function should complete with any number of `result` values.
- * The `result` values will be passed as arguments, in order, to the next task.
- * @param {Function} [callback] - An optional callback to run once all the
- * functions have completed. This will be passed the results of the last task's
- * callback. Invoked with (err, [results]).
- * @returns undefined
- * @example
- *
- * async.waterfall([
- *     function(callback) {
- *         callback(null, 'one', 'two');
- *     },
- *     function(arg1, arg2, callback) {
- *         // arg1 now equals 'one' and arg2 now equals 'two'
- *         callback(null, 'three');
- *     },
- *     function(arg1, callback) {
- *         // arg1 now equals 'three'
- *         callback(null, 'done');
- *     }
- * ], function (err, result) {
- *     // result now equals 'done'
- * });
- *
- * // Or, with named functions:
- * async.waterfall([
- *     myFirstFunction,
- *     mySecondFunction,
- *     myLastFunction,
- * ], function (err, result) {
- *     // result now equals 'done'
- * });
- * function myFirstFunction(callback) {
- *     callback(null, 'one', 'two');
- * }
- * function mySecondFunction(arg1, arg2, callback) {
- *     // arg1 now equals 'one' and arg2 now equals 'two'
- *     callback(null, 'three');
- * }
- * function myLastFunction(arg1, callback) {
- *     // arg1 now equals 'three'
- *     callback(null, 'done');
- * }
- */
-},{"./internal/once":82,"./internal/onlyOnce":83,"./internal/slice":86,"./internal/wrapAsync":88,"lodash/isArray":753,"lodash/noop":762}],91:[function(require,module,exports){
-'use strict';
-
-Object.defineProperty(exports, "__esModule", {
-    value: true
-});
-exports.default = whilst;
-
-var _noop = require('lodash/noop');
-
-var _noop2 = _interopRequireDefault(_noop);
-
-var _slice = require('./internal/slice');
-
-var _slice2 = _interopRequireDefault(_slice);
-
-var _onlyOnce = require('./internal/onlyOnce');
-
-var _onlyOnce2 = _interopRequireDefault(_onlyOnce);
-
-var _wrapAsync = require('./internal/wrapAsync');
-
-var _wrapAsync2 = _interopRequireDefault(_wrapAsync);
-
-function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
-
-/**
- * Repeatedly call `iteratee`, while `test` returns `true`. Calls `callback` when
- * stopped, or an error occurs.
- *
- * @name whilst
- * @static
- * @memberOf module:ControlFlow
- * @method
- * @category Control Flow
- * @param {Function} test - synchronous truth test to perform before each
- * execution of `iteratee`. Invoked with ().
- * @param {AsyncFunction} iteratee - An async function which is called each time
- * `test` passes. Invoked with (callback).
- * @param {Function} [callback] - A callback which is called after the test
- * function has failed and repeated execution of `iteratee` has stopped. `callback`
- * will be passed an error and any arguments passed to the final `iteratee`'s
- * callback. Invoked with (err, [results]);
- * @returns undefined
- * @example
- *
- * var count = 0;
- * async.whilst(
- *     function() { return count < 5; },
- *     function(callback) {
- *         count++;
- *         setTimeout(function() {
- *             callback(null, count);
- *         }, 1000);
- *     },
- *     function (err, n) {
- *         // 5 seconds have passed, n = 5
- *     }
- * );
- */
-function whilst(test, iteratee, callback) {
-    callback = (0, _onlyOnce2.default)(callback || _noop2.default);
-    var _iteratee = (0, _wrapAsync2.default)(iteratee);
-    if (!test()) return callback(null);
-    var next = function (err /*, ...args*/) {
-        if (err) return callback(err);
-        if (test()) return _iteratee(next);
-        var args = (0, _slice2.default)(arguments, 1);
-        callback.apply(null, [null].concat(args));
-    };
-    _iteratee(next);
-}
-module.exports = exports['default'];
-},{"./internal/onlyOnce":83,"./internal/slice":86,"./internal/wrapAsync":88,"lodash/noop":762}],92:[function(require,module,exports){
+},{"cipher-base":103,"inherits":200,"safe-buffer":656}],113:[function(require,module,exports){
 /* @flow */
 'use strict'
 
@@ -16233,7 +17546,7 @@ exports.TieredDatastore = TieredDatastore
 exports.NamespaceDatastore = NamespaceDatastore
 exports.shard = shard
 
-},{"./keytransform":93,"./mount":94,"./namespace":95,"./shard":97,"./sharding":98,"./tiered":99}],93:[function(require,module,exports){
+},{"./keytransform":114,"./mount":115,"./namespace":116,"./shard":118,"./sharding":119,"./tiered":120}],114:[function(require,module,exports){
 /* @flow */
 'use strict'
 
@@ -16326,7 +17639,7 @@ class KeyTransformDatastore /* :: <Value> */ {
 
 module.exports = KeyTransformDatastore
 
-},{"pull-stream":892}],94:[function(require,module,exports){
+},{"pull-stream":600}],115:[function(require,module,exports){
 /* @flow */
 'use strict'
 
@@ -16519,7 +17832,7 @@ class MountDatastore /* :: <Value> */ {
 
 module.exports = MountDatastore
 
-},{"./keytransform":93,"async/each":73,"interface-datastore":190,"pull-many":882,"pull-stream":892}],95:[function(require,module,exports){
+},{"./keytransform":114,"async/each":21,"interface-datastore":203,"pull-many":590,"pull-stream":600}],116:[function(require,module,exports){
 /* @flow */
 'use strict'
 
@@ -16575,7 +17888,7 @@ class NamespaceDatastore/* :: <Value> */ extends KeytransformDatastore /* :: <Va
 
 module.exports = NamespaceDatastore
 
-},{"./keytransform":93,"interface-datastore":190}],96:[function(require,module,exports){
+},{"./keytransform":114,"interface-datastore":203}],117:[function(require,module,exports){
 /* @flow */
 'use strict'
 
@@ -16603,7 +17916,7 @@ beginning of the CIDv1 string is the multibase prefix that is not
 stored in the filename.
 `
 
-},{}],97:[function(require,module,exports){
+},{}],118:[function(require,module,exports){
 /* @flow */
 'use strict'
 
@@ -16754,7 +18067,7 @@ exports.Prefix = Prefix
 exports.Suffix = Suffix
 exports.NextToLast = NextToLast
 
-},{"./shard-readme":96,"interface-datastore":190,"left-pad":512}],98:[function(require,module,exports){
+},{"./shard-readme":117,"interface-datastore":203,"left-pad":349}],119:[function(require,module,exports){
 (function (Buffer){
 /* @flow */
 'use strict'
@@ -16942,7 +18255,7 @@ class ShardingDatastore {
 module.exports = ShardingDatastore
 
 }).call(this,require("buffer").Buffer)
-},{"./keytransform":93,"./shard":97,"async/parallel":89,"async/waterfall":90,"buffer":1013,"interface-datastore":190,"pull-stream":892}],99:[function(require,module,exports){
+},{"./keytransform":114,"./shard":118,"async/parallel":50,"async/waterfall":57,"buffer":718,"interface-datastore":203,"pull-stream":600}],120:[function(require,module,exports){
 /* @flow */
 'use strict'
 
@@ -17048,7 +18361,7 @@ class TieredDatastore /* :: <Value> */ {
 
 module.exports = TieredDatastore
 
-},{"async/each":73,"async/whilst":91}],100:[function(require,module,exports){
+},{"async/each":21,"async/whilst":58}],121:[function(require,module,exports){
 (function (Buffer){
 /* @flow */
 'use strict'
@@ -17216,7 +18529,7 @@ class LevelDatastore {
 module.exports = LevelDatastore
 
 }).call(this,require("buffer").Buffer)
-},{"buffer":1013,"interface-datastore":190,"levelup":533,"pull-stream":892}],101:[function(require,module,exports){
+},{"buffer":718,"interface-datastore":203,"levelup":370,"pull-stream":600}],122:[function(require,module,exports){
 (function (process){
 /**
  * This is the web browser implementation of `debug()`.
@@ -17240,17 +18553,12 @@ exports.storage = 'undefined' != typeof chrome
  */
 
 exports.colors = [
-  '#0000CC', '#0000FF', '#0033CC', '#0033FF', '#0066CC', '#0066FF', '#0099CC',
-  '#0099FF', '#00CC00', '#00CC33', '#00CC66', '#00CC99', '#00CCCC', '#00CCFF',
-  '#3300CC', '#3300FF', '#3333CC', '#3333FF', '#3366CC', '#3366FF', '#3399CC',
-  '#3399FF', '#33CC00', '#33CC33', '#33CC66', '#33CC99', '#33CCCC', '#33CCFF',
-  '#6600CC', '#6600FF', '#6633CC', '#6633FF', '#66CC00', '#66CC33', '#9900CC',
-  '#9900FF', '#9933CC', '#9933FF', '#99CC00', '#99CC33', '#CC0000', '#CC0033',
-  '#CC0066', '#CC0099', '#CC00CC', '#CC00FF', '#CC3300', '#CC3333', '#CC3366',
-  '#CC3399', '#CC33CC', '#CC33FF', '#CC6600', '#CC6633', '#CC9900', '#CC9933',
-  '#CCCC00', '#CCCC33', '#FF0000', '#FF0033', '#FF0066', '#FF0099', '#FF00CC',
-  '#FF00FF', '#FF3300', '#FF3333', '#FF3366', '#FF3399', '#FF33CC', '#FF33FF',
-  '#FF6600', '#FF6633', '#FF9900', '#FF9933', '#FFCC00', '#FFCC33'
+  'lightseagreen',
+  'forestgreen',
+  'goldenrod',
+  'dodgerblue',
+  'darkorchid',
+  'crimson'
 ];
 
 /**
@@ -17267,11 +18575,6 @@ function useColors() {
   // explicitly
   if (typeof window !== 'undefined' && window.process && window.process.type === 'renderer') {
     return true;
-  }
-
-  // Internet Explorer and Edge do not support colors.
-  if (typeof navigator !== 'undefined' && navigator.userAgent && navigator.userAgent.toLowerCase().match(/(edge|trident)\/(\d+)/)) {
-    return false;
   }
 
   // is webkit? http://stackoverflow.com/a/16459606/376773
@@ -17415,7 +18718,7 @@ function localstorage() {
 }
 
 }).call(this,require('_process'))
-},{"./debug":102,"_process":1024}],102:[function(require,module,exports){
+},{"./debug":123,"_process":729}],123:[function(require,module,exports){
 
 /**
  * This is the common logic for both the Node.js and web browser
@@ -17432,11 +18735,6 @@ exports.enabled = enabled;
 exports.humanize = require('ms');
 
 /**
- * Active `debug` instances.
- */
-exports.instances = [];
-
-/**
  * The currently active debug mode names, and names to skip.
  */
 
@@ -17450,6 +18748,12 @@ exports.skips = [];
  */
 
 exports.formatters = {};
+
+/**
+ * Previous log timestamp.
+ */
+
+var prevTime;
 
 /**
  * Select a color.
@@ -17478,8 +18782,6 @@ function selectColor(namespace) {
  */
 
 function createDebug(namespace) {
-
-  var prevTime;
 
   function debug() {
     // disabled?
@@ -17537,26 +18839,13 @@ function createDebug(namespace) {
   debug.enabled = exports.enabled(namespace);
   debug.useColors = exports.useColors();
   debug.color = selectColor(namespace);
-  debug.destroy = destroy;
 
   // env-specific initialization logic for debug instances
   if ('function' === typeof exports.init) {
     exports.init(debug);
   }
 
-  exports.instances.push(debug);
-
   return debug;
-}
-
-function destroy () {
-  var index = exports.instances.indexOf(this);
-  if (index !== -1) {
-    exports.instances.splice(index, 1);
-    return true;
-  } else {
-    return false;
-  }
 }
 
 /**
@@ -17573,11 +18862,10 @@ function enable(namespaces) {
   exports.names = [];
   exports.skips = [];
 
-  var i;
   var split = (typeof namespaces === 'string' ? namespaces : '').split(/[\s,]+/);
   var len = split.length;
 
-  for (i = 0; i < len; i++) {
+  for (var i = 0; i < len; i++) {
     if (!split[i]) continue; // ignore empty strings
     namespaces = split[i].replace(/\*/g, '.*?');
     if (namespaces[0] === '-') {
@@ -17585,11 +18873,6 @@ function enable(namespaces) {
     } else {
       exports.names.push(new RegExp('^' + namespaces + '$'));
     }
-  }
-
-  for (i = 0; i < exports.instances.length; i++) {
-    var instance = exports.instances[i];
-    instance.enabled = exports.enabled(instance.namespace);
   }
 }
 
@@ -17612,9 +18895,6 @@ function disable() {
  */
 
 function enabled(name) {
-  if (name[name.length - 1] === '*') {
-    return true;
-  }
   var i, len;
   for (i = 0, len = exports.skips.length; i < len; i++) {
     if (exports.skips[i].test(name)) {
@@ -17642,7 +18922,7 @@ function coerce(val) {
   return val;
 }
 
-},{"ms":772}],103:[function(require,module,exports){
+},{"ms":514}],124:[function(require,module,exports){
 (function (Buffer){
 /*!
  * @description Recursive object extending
@@ -17790,7 +19070,7 @@ var deepExtend = module.exports = function (/*obj_1, [obj_2], [obj_N]*/) {
 }
 
 }).call(this,require("buffer").Buffer)
-},{"buffer":1013}],104:[function(require,module,exports){
+},{"buffer":718}],125:[function(require,module,exports){
 var util = require('util')
   , AbstractIterator = require('abstract-leveldown').AbstractIterator
 
@@ -17826,7 +19106,7 @@ DeferredIterator.prototype._operation = function (method, args) {
 
 module.exports = DeferredIterator;
 
-},{"abstract-leveldown":109,"util":1050}],105:[function(require,module,exports){
+},{"abstract-leveldown":130,"util":755}],126:[function(require,module,exports){
 (function (Buffer,process){
 var util              = require('util')
   , AbstractLevelDOWN = require('abstract-leveldown').AbstractLevelDOWN
@@ -17885,8 +19165,8 @@ DeferredLevelDOWN.prototype._iterator = function (options) {
 module.exports                  = DeferredLevelDOWN
 module.exports.DeferredIterator = DeferredIterator
 
-}).call(this,{"isBuffer":require("../../../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js")},require('_process'))
-},{"../../../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js":1019,"./deferred-iterator":104,"_process":1024,"abstract-leveldown":109,"util":1050}],106:[function(require,module,exports){
+}).call(this,{"isBuffer":require("../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js")},require('_process'))
+},{"../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js":724,"./deferred-iterator":125,"_process":729,"abstract-leveldown":130,"util":755}],127:[function(require,module,exports){
 (function (process){
 /* Copyright (c) 2017 Rod Vagg, MIT License */
 
@@ -17978,7 +19258,7 @@ AbstractChainedBatch.prototype.write = function (options, callback) {
 module.exports = AbstractChainedBatch
 
 }).call(this,require('_process'))
-},{"_process":1024}],107:[function(require,module,exports){
+},{"_process":729}],128:[function(require,module,exports){
 (function (process){
 /* Copyright (c) 2017 Rod Vagg, MIT License */
 
@@ -18031,7 +19311,7 @@ AbstractIterator.prototype.end = function (callback) {
 module.exports = AbstractIterator
 
 }).call(this,require('_process'))
-},{"_process":1024}],108:[function(require,module,exports){
+},{"_process":729}],129:[function(require,module,exports){
 (function (Buffer,process){
 /* Copyright (c) 2017 Rod Vagg, MIT License */
 
@@ -18305,14 +19585,14 @@ AbstractLevelDOWN.prototype._checkKey = function (obj, type) {
 
 module.exports = AbstractLevelDOWN
 
-}).call(this,{"isBuffer":require("../../../../../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js")},require('_process'))
-},{"../../../../../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js":1019,"./abstract-chained-batch":106,"./abstract-iterator":107,"_process":1024,"xtend":1008}],109:[function(require,module,exports){
+}).call(this,{"isBuffer":require("../../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js")},require('_process'))
+},{"../../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js":724,"./abstract-chained-batch":127,"./abstract-iterator":128,"_process":729,"xtend":713}],130:[function(require,module,exports){
 exports.AbstractLevelDOWN    = require('./abstract-leveldown')
 exports.AbstractIterator     = require('./abstract-iterator')
 exports.AbstractChainedBatch = require('./abstract-chained-batch')
 exports.isLevelDOWN          = require('./is-leveldown')
 
-},{"./abstract-chained-batch":106,"./abstract-iterator":107,"./abstract-leveldown":108,"./is-leveldown":110}],110:[function(require,module,exports){
+},{"./abstract-chained-batch":127,"./abstract-iterator":128,"./abstract-leveldown":129,"./is-leveldown":131}],131:[function(require,module,exports){
 var AbstractLevelDOWN = require('./abstract-leveldown')
 
 function isLevelDOWN (db) {
@@ -18328,7 +19608,7 @@ function isLevelDOWN (db) {
 
 module.exports = isLevelDOWN
 
-},{"./abstract-leveldown":108}],111:[function(require,module,exports){
+},{"./abstract-leveldown":129}],132:[function(require,module,exports){
 (function (Buffer){
 'use strict'
 var createHmac = require('create-hmac')
@@ -18403,7 +19683,7 @@ HmacDRBG.prototype.generate = function (len, add) {
 module.exports = HmacDRBG
 
 }).call(this,require("buffer").Buffer)
-},{"./lib/hash-info.json":112,"buffer":1013,"create-hmac":70}],112:[function(require,module,exports){
+},{"./lib/hash-info.json":133,"buffer":718,"create-hmac":111}],133:[function(require,module,exports){
 module.exports={
   "sha1": {
     "securityStrength": 128,
@@ -18432,7 +19712,7 @@ module.exports={
   }
 }
 
-},{}],113:[function(require,module,exports){
+},{}],134:[function(require,module,exports){
 (function (process,Buffer){
 var stream = require('readable-stream')
 var eos = require('end-of-stream')
@@ -18664,7 +19944,7 @@ Duplexify.prototype.end = function(data, enc, cb) {
 module.exports = Duplexify
 
 }).call(this,require('_process'),require("buffer").Buffer)
-},{"_process":1024,"buffer":1013,"end-of-stream":130,"inherits":181,"readable-stream":944,"stream-shift":991}],114:[function(require,module,exports){
+},{"_process":729,"buffer":718,"end-of-stream":151,"inherits":200,"readable-stream":652,"stream-shift":693}],135:[function(require,module,exports){
 'use strict';
 
 var elliptic = exports;
@@ -18679,7 +19959,7 @@ elliptic.curves = require('./elliptic/curves');
 elliptic.ec = require('./elliptic/ec');
 elliptic.eddsa = require('./elliptic/eddsa');
 
-},{"../package.json":129,"./elliptic/curve":117,"./elliptic/curves":120,"./elliptic/ec":121,"./elliptic/eddsa":124,"./elliptic/utils":128,"brorand":39}],115:[function(require,module,exports){
+},{"../package.json":150,"./elliptic/curve":138,"./elliptic/curves":141,"./elliptic/ec":142,"./elliptic/eddsa":145,"./elliptic/utils":149,"brorand":80}],136:[function(require,module,exports){
 'use strict';
 
 var BN = require('bn.js');
@@ -19056,7 +20336,7 @@ BasePoint.prototype.dblp = function dblp(k) {
   return r;
 };
 
-},{"../../elliptic":114,"bn.js":29}],116:[function(require,module,exports){
+},{"../../elliptic":135,"bn.js":70}],137:[function(require,module,exports){
 'use strict';
 
 var curve = require('../curve');
@@ -19491,7 +20771,7 @@ Point.prototype.eqXToP = function eqXToP(x) {
 Point.prototype.toP = Point.prototype.normalize;
 Point.prototype.mixedAdd = Point.prototype.add;
 
-},{"../../elliptic":114,"../curve":117,"bn.js":29,"inherits":181}],117:[function(require,module,exports){
+},{"../../elliptic":135,"../curve":138,"bn.js":70,"inherits":200}],138:[function(require,module,exports){
 'use strict';
 
 var curve = exports;
@@ -19501,7 +20781,7 @@ curve.short = require('./short');
 curve.mont = require('./mont');
 curve.edwards = require('./edwards');
 
-},{"./base":115,"./edwards":116,"./mont":118,"./short":119}],118:[function(require,module,exports){
+},{"./base":136,"./edwards":137,"./mont":139,"./short":140}],139:[function(require,module,exports){
 'use strict';
 
 var curve = require('../curve');
@@ -19683,7 +20963,7 @@ Point.prototype.getX = function getX() {
   return this.x.fromRed();
 };
 
-},{"../../elliptic":114,"../curve":117,"bn.js":29,"inherits":181}],119:[function(require,module,exports){
+},{"../../elliptic":135,"../curve":138,"bn.js":70,"inherits":200}],140:[function(require,module,exports){
 'use strict';
 
 var curve = require('../curve');
@@ -20623,7 +21903,7 @@ JPoint.prototype.isInfinity = function isInfinity() {
   return this.z.cmpn(0) === 0;
 };
 
-},{"../../elliptic":114,"../curve":117,"bn.js":29,"inherits":181}],120:[function(require,module,exports){
+},{"../../elliptic":135,"../curve":138,"bn.js":70,"inherits":200}],141:[function(require,module,exports){
 'use strict';
 
 var curves = exports;
@@ -20830,7 +22110,7 @@ defineCurve('secp256k1', {
   ]
 });
 
-},{"../elliptic":114,"./precomputed/secp256k1":127,"hash.js":165}],121:[function(require,module,exports){
+},{"../elliptic":135,"./precomputed/secp256k1":148,"hash.js":184}],142:[function(require,module,exports){
 'use strict';
 
 var BN = require('bn.js');
@@ -21072,7 +22352,7 @@ EC.prototype.getKeyRecoveryParam = function(e, signature, Q, enc) {
   throw new Error('Unable to find valid recovery factor');
 };
 
-},{"../../elliptic":114,"./key":122,"./signature":123,"bn.js":29,"hmac-drbg":177}],122:[function(require,module,exports){
+},{"../../elliptic":135,"./key":143,"./signature":144,"bn.js":70,"hmac-drbg":196}],143:[function(require,module,exports){
 'use strict';
 
 var BN = require('bn.js');
@@ -21193,7 +22473,7 @@ KeyPair.prototype.inspect = function inspect() {
          ' pub: ' + (this.pub && this.pub.inspect()) + ' >';
 };
 
-},{"../../elliptic":114,"bn.js":29}],123:[function(require,module,exports){
+},{"../../elliptic":135,"bn.js":70}],144:[function(require,module,exports){
 'use strict';
 
 var BN = require('bn.js');
@@ -21330,7 +22610,7 @@ Signature.prototype.toDER = function toDER(enc) {
   return utils.encode(res, enc);
 };
 
-},{"../../elliptic":114,"bn.js":29}],124:[function(require,module,exports){
+},{"../../elliptic":135,"bn.js":70}],145:[function(require,module,exports){
 'use strict';
 
 var hash = require('hash.js');
@@ -21450,7 +22730,7 @@ EDDSA.prototype.isPoint = function isPoint(val) {
   return val instanceof this.pointClass;
 };
 
-},{"../../elliptic":114,"./key":125,"./signature":126,"hash.js":165}],125:[function(require,module,exports){
+},{"../../elliptic":135,"./key":146,"./signature":147,"hash.js":184}],146:[function(require,module,exports){
 'use strict';
 
 var elliptic = require('../../elliptic');
@@ -21548,7 +22828,7 @@ KeyPair.prototype.getPublic = function getPublic(enc) {
 
 module.exports = KeyPair;
 
-},{"../../elliptic":114}],126:[function(require,module,exports){
+},{"../../elliptic":135}],147:[function(require,module,exports){
 'use strict';
 
 var BN = require('bn.js');
@@ -21616,7 +22896,7 @@ Signature.prototype.toHex = function toHex() {
 
 module.exports = Signature;
 
-},{"../../elliptic":114,"bn.js":29}],127:[function(require,module,exports){
+},{"../../elliptic":135,"bn.js":70}],148:[function(require,module,exports){
 module.exports = {
   doubles: {
     step: 4,
@@ -22398,7 +23678,7 @@ module.exports = {
   }
 };
 
-},{}],128:[function(require,module,exports){
+},{}],149:[function(require,module,exports){
 'use strict';
 
 var utils = exports;
@@ -22520,7 +23800,7 @@ function intFromLE(bytes) {
 utils.intFromLE = intFromLE;
 
 
-},{"bn.js":29,"minimalistic-assert":770,"minimalistic-crypto-utils":771}],129:[function(require,module,exports){
+},{"bn.js":70,"minimalistic-assert":512,"minimalistic-crypto-utils":513}],150:[function(require,module,exports){
 module.exports={
   "_from": "elliptic@^6.2.3",
   "_id": "elliptic@6.4.0",
@@ -22544,7 +23824,7 @@ module.exports={
   "_resolved": "https://registry.npmjs.org/elliptic/-/elliptic-6.4.0.tgz",
   "_shasum": "cac9af8762c85836187003c8dfe193e5e2eae5df",
   "_spec": "elliptic@^6.2.3",
-  "_where": "/home/vipul/Documents/ethereum/messaging/node_modules/secp256k1",
+  "_where": "/home/vipul/node_modules/secp256k1",
   "author": {
     "name": "Fedor Indutny",
     "email": "fedor@indutny.com"
@@ -22608,7 +23888,7 @@ module.exports={
   "version": "6.4.0"
 }
 
-},{}],130:[function(require,module,exports){
+},{}],151:[function(require,module,exports){
 var once = require('once');
 
 var noop = function() {};
@@ -22693,11 +23973,11 @@ var eos = function(stream, opts, callback) {
 
 module.exports = eos;
 
-},{"once":837}],131:[function(require,module,exports){
+},{"once":554}],152:[function(require,module,exports){
 
 module.exports = require('./lib/index');
 
-},{"./lib/index":132}],132:[function(require,module,exports){
+},{"./lib/index":153}],153:[function(require,module,exports){
 
 module.exports = require('./socket');
 
@@ -22709,7 +23989,7 @@ module.exports = require('./socket');
  */
 module.exports.parser = require('engine.io-parser');
 
-},{"./socket":133,"engine.io-parser":143}],133:[function(require,module,exports){
+},{"./socket":154,"engine.io-parser":162}],154:[function(require,module,exports){
 (function (global){
 /**
  * Module dependencies.
@@ -23456,7 +24736,7 @@ Socket.prototype.filterUpgrades = function (upgrades) {
 };
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./transport":134,"./transports/index":135,"component-emitter":64,"debug":141,"engine.io-parser":143,"indexof":180,"parseqs":838,"parseuri":839}],134:[function(require,module,exports){
+},{"./transport":155,"./transports/index":156,"component-emitter":105,"debug":122,"engine.io-parser":162,"indexof":199,"parseqs":555,"parseuri":556}],155:[function(require,module,exports){
 /**
  * Module dependencies.
  */
@@ -23615,7 +24895,7 @@ Transport.prototype.onClose = function () {
   this.emit('close');
 };
 
-},{"component-emitter":64,"engine.io-parser":143}],135:[function(require,module,exports){
+},{"component-emitter":105,"engine.io-parser":162}],156:[function(require,module,exports){
 (function (global){
 /**
  * Module dependencies
@@ -23672,7 +24952,7 @@ function polling (opts) {
 }
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./polling-jsonp":136,"./polling-xhr":137,"./websocket":139,"xmlhttprequest-ssl":140}],136:[function(require,module,exports){
+},{"./polling-jsonp":157,"./polling-xhr":158,"./websocket":160,"xmlhttprequest-ssl":161}],157:[function(require,module,exports){
 (function (global){
 
 /**
@@ -23907,7 +25187,7 @@ JSONPPolling.prototype.doWrite = function (data, fn) {
 };
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./polling":138,"component-inherit":65}],137:[function(require,module,exports){
+},{"./polling":159,"component-inherit":106}],158:[function(require,module,exports){
 (function (global){
 /**
  * Module requirements.
@@ -24324,7 +25604,7 @@ function unloadHandler () {
 }
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./polling":138,"component-emitter":64,"component-inherit":65,"debug":141,"xmlhttprequest-ssl":140}],138:[function(require,module,exports){
+},{"./polling":159,"component-emitter":105,"component-inherit":106,"debug":122,"xmlhttprequest-ssl":161}],159:[function(require,module,exports){
 /**
  * Module dependencies.
  */
@@ -24571,7 +25851,7 @@ Polling.prototype.uri = function () {
   return schema + '://' + (ipv6 ? '[' + this.hostname + ']' : this.hostname) + port + this.path + query;
 };
 
-},{"../transport":134,"component-inherit":65,"debug":141,"engine.io-parser":143,"parseqs":838,"xmlhttprequest-ssl":140,"yeast":1009}],139:[function(require,module,exports){
+},{"../transport":155,"component-inherit":106,"debug":122,"engine.io-parser":162,"parseqs":555,"xmlhttprequest-ssl":161,"yeast":714}],160:[function(require,module,exports){
 (function (global){
 /**
  * Module dependencies.
@@ -24861,7 +26141,7 @@ WS.prototype.check = function () {
 };
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"../transport":134,"component-inherit":65,"debug":141,"engine.io-parser":143,"parseqs":838,"ws":1012,"yeast":1009}],140:[function(require,module,exports){
+},{"../transport":155,"component-inherit":106,"debug":122,"engine.io-parser":162,"parseqs":555,"ws":717,"yeast":714}],161:[function(require,module,exports){
 (function (global){
 // browser shim for xmlhttprequest module
 
@@ -24902,400 +26182,7 @@ module.exports = function (opts) {
 };
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"has-cors":163}],141:[function(require,module,exports){
-(function (process){
-/**
- * This is the web browser implementation of `debug()`.
- *
- * Expose `debug()` as the module.
- */
-
-exports = module.exports = require('./debug');
-exports.log = log;
-exports.formatArgs = formatArgs;
-exports.save = save;
-exports.load = load;
-exports.useColors = useColors;
-exports.storage = 'undefined' != typeof chrome
-               && 'undefined' != typeof chrome.storage
-                  ? chrome.storage.local
-                  : localstorage();
-
-/**
- * Colors.
- */
-
-exports.colors = [
-  'lightseagreen',
-  'forestgreen',
-  'goldenrod',
-  'dodgerblue',
-  'darkorchid',
-  'crimson'
-];
-
-/**
- * Currently only WebKit-based Web Inspectors, Firefox >= v31,
- * and the Firebug extension (any Firefox version) are known
- * to support "%c" CSS customizations.
- *
- * TODO: add a `localStorage` variable to explicitly enable/disable colors
- */
-
-function useColors() {
-  // NB: In an Electron preload script, document will be defined but not fully
-  // initialized. Since we know we're in Chrome, we'll just detect this case
-  // explicitly
-  if (typeof window !== 'undefined' && window.process && window.process.type === 'renderer') {
-    return true;
-  }
-
-  // is webkit? http://stackoverflow.com/a/16459606/376773
-  // document is undefined in react-native: https://github.com/facebook/react-native/pull/1632
-  return (typeof document !== 'undefined' && document.documentElement && document.documentElement.style && document.documentElement.style.WebkitAppearance) ||
-    // is firebug? http://stackoverflow.com/a/398120/376773
-    (typeof window !== 'undefined' && window.console && (window.console.firebug || (window.console.exception && window.console.table))) ||
-    // is firefox >= v31?
-    // https://developer.mozilla.org/en-US/docs/Tools/Web_Console#Styling_messages
-    (typeof navigator !== 'undefined' && navigator.userAgent && navigator.userAgent.toLowerCase().match(/firefox\/(\d+)/) && parseInt(RegExp.$1, 10) >= 31) ||
-    // double check webkit in userAgent just in case we are in a worker
-    (typeof navigator !== 'undefined' && navigator.userAgent && navigator.userAgent.toLowerCase().match(/applewebkit\/(\d+)/));
-}
-
-/**
- * Map %j to `JSON.stringify()`, since no Web Inspectors do that by default.
- */
-
-exports.formatters.j = function(v) {
-  try {
-    return JSON.stringify(v);
-  } catch (err) {
-    return '[UnexpectedJSONParseError]: ' + err.message;
-  }
-};
-
-
-/**
- * Colorize log arguments if enabled.
- *
- * @api public
- */
-
-function formatArgs(args) {
-  var useColors = this.useColors;
-
-  args[0] = (useColors ? '%c' : '')
-    + this.namespace
-    + (useColors ? ' %c' : ' ')
-    + args[0]
-    + (useColors ? '%c ' : ' ')
-    + '+' + exports.humanize(this.diff);
-
-  if (!useColors) return;
-
-  var c = 'color: ' + this.color;
-  args.splice(1, 0, c, 'color: inherit')
-
-  // the final "%c" is somewhat tricky, because there could be other
-  // arguments passed either before or after the %c, so we need to
-  // figure out the correct index to insert the CSS into
-  var index = 0;
-  var lastC = 0;
-  args[0].replace(/%[a-zA-Z%]/g, function(match) {
-    if ('%%' === match) return;
-    index++;
-    if ('%c' === match) {
-      // we only are interested in the *last* %c
-      // (the user may have provided their own)
-      lastC = index;
-    }
-  });
-
-  args.splice(lastC, 0, c);
-}
-
-/**
- * Invokes `console.log()` when available.
- * No-op when `console.log` is not a "function".
- *
- * @api public
- */
-
-function log() {
-  // this hackery is required for IE8/9, where
-  // the `console.log` function doesn't have 'apply'
-  return 'object' === typeof console
-    && console.log
-    && Function.prototype.apply.call(console.log, console, arguments);
-}
-
-/**
- * Save `namespaces`.
- *
- * @param {String} namespaces
- * @api private
- */
-
-function save(namespaces) {
-  try {
-    if (null == namespaces) {
-      exports.storage.removeItem('debug');
-    } else {
-      exports.storage.debug = namespaces;
-    }
-  } catch(e) {}
-}
-
-/**
- * Load `namespaces`.
- *
- * @return {String} returns the previously persisted debug modes
- * @api private
- */
-
-function load() {
-  var r;
-  try {
-    r = exports.storage.debug;
-  } catch(e) {}
-
-  // If debug isn't set in LS, and we're in Electron, try to load $DEBUG
-  if (!r && typeof process !== 'undefined' && 'env' in process) {
-    r = process.env.DEBUG;
-  }
-
-  return r;
-}
-
-/**
- * Enable namespaces listed in `localStorage.debug` initially.
- */
-
-exports.enable(load());
-
-/**
- * Localstorage attempts to return the localstorage.
- *
- * This is necessary because safari throws
- * when a user disables cookies/localstorage
- * and you attempt to access it.
- *
- * @return {LocalStorage}
- * @api private
- */
-
-function localstorage() {
-  try {
-    return window.localStorage;
-  } catch (e) {}
-}
-
-}).call(this,require('_process'))
-},{"./debug":142,"_process":1024}],142:[function(require,module,exports){
-
-/**
- * This is the common logic for both the Node.js and web browser
- * implementations of `debug()`.
- *
- * Expose `debug()` as the module.
- */
-
-exports = module.exports = createDebug.debug = createDebug['default'] = createDebug;
-exports.coerce = coerce;
-exports.disable = disable;
-exports.enable = enable;
-exports.enabled = enabled;
-exports.humanize = require('ms');
-
-/**
- * The currently active debug mode names, and names to skip.
- */
-
-exports.names = [];
-exports.skips = [];
-
-/**
- * Map of special "%n" handling functions, for the debug "format" argument.
- *
- * Valid key names are a single, lower or upper-case letter, i.e. "n" and "N".
- */
-
-exports.formatters = {};
-
-/**
- * Previous log timestamp.
- */
-
-var prevTime;
-
-/**
- * Select a color.
- * @param {String} namespace
- * @return {Number}
- * @api private
- */
-
-function selectColor(namespace) {
-  var hash = 0, i;
-
-  for (i in namespace) {
-    hash  = ((hash << 5) - hash) + namespace.charCodeAt(i);
-    hash |= 0; // Convert to 32bit integer
-  }
-
-  return exports.colors[Math.abs(hash) % exports.colors.length];
-}
-
-/**
- * Create a debugger with the given `namespace`.
- *
- * @param {String} namespace
- * @return {Function}
- * @api public
- */
-
-function createDebug(namespace) {
-
-  function debug() {
-    // disabled?
-    if (!debug.enabled) return;
-
-    var self = debug;
-
-    // set `diff` timestamp
-    var curr = +new Date();
-    var ms = curr - (prevTime || curr);
-    self.diff = ms;
-    self.prev = prevTime;
-    self.curr = curr;
-    prevTime = curr;
-
-    // turn the `arguments` into a proper Array
-    var args = new Array(arguments.length);
-    for (var i = 0; i < args.length; i++) {
-      args[i] = arguments[i];
-    }
-
-    args[0] = exports.coerce(args[0]);
-
-    if ('string' !== typeof args[0]) {
-      // anything else let's inspect with %O
-      args.unshift('%O');
-    }
-
-    // apply any `formatters` transformations
-    var index = 0;
-    args[0] = args[0].replace(/%([a-zA-Z%])/g, function(match, format) {
-      // if we encounter an escaped % then don't increase the array index
-      if (match === '%%') return match;
-      index++;
-      var formatter = exports.formatters[format];
-      if ('function' === typeof formatter) {
-        var val = args[index];
-        match = formatter.call(self, val);
-
-        // now we need to remove `args[index]` since it's inlined in the `format`
-        args.splice(index, 1);
-        index--;
-      }
-      return match;
-    });
-
-    // apply env-specific formatting (colors, etc.)
-    exports.formatArgs.call(self, args);
-
-    var logFn = debug.log || exports.log || console.log.bind(console);
-    logFn.apply(self, args);
-  }
-
-  debug.namespace = namespace;
-  debug.enabled = exports.enabled(namespace);
-  debug.useColors = exports.useColors();
-  debug.color = selectColor(namespace);
-
-  // env-specific initialization logic for debug instances
-  if ('function' === typeof exports.init) {
-    exports.init(debug);
-  }
-
-  return debug;
-}
-
-/**
- * Enables a debug mode by namespaces. This can include modes
- * separated by a colon and wildcards.
- *
- * @param {String} namespaces
- * @api public
- */
-
-function enable(namespaces) {
-  exports.save(namespaces);
-
-  exports.names = [];
-  exports.skips = [];
-
-  var split = (typeof namespaces === 'string' ? namespaces : '').split(/[\s,]+/);
-  var len = split.length;
-
-  for (var i = 0; i < len; i++) {
-    if (!split[i]) continue; // ignore empty strings
-    namespaces = split[i].replace(/\*/g, '.*?');
-    if (namespaces[0] === '-') {
-      exports.skips.push(new RegExp('^' + namespaces.substr(1) + '$'));
-    } else {
-      exports.names.push(new RegExp('^' + namespaces + '$'));
-    }
-  }
-}
-
-/**
- * Disable debug output.
- *
- * @api public
- */
-
-function disable() {
-  exports.enable('');
-}
-
-/**
- * Returns true if the given mode name is enabled, false otherwise.
- *
- * @param {String} name
- * @return {Boolean}
- * @api public
- */
-
-function enabled(name) {
-  var i, len;
-  for (i = 0, len = exports.skips.length; i < len; i++) {
-    if (exports.skips[i].test(name)) {
-      return false;
-    }
-  }
-  for (i = 0, len = exports.names.length; i < len; i++) {
-    if (exports.names[i].test(name)) {
-      return true;
-    }
-  }
-  return false;
-}
-
-/**
- * Coerce `val`.
- *
- * @param {Mixed} val
- * @return {Mixed}
- * @api private
- */
-
-function coerce(val) {
-  if (val instanceof Error) return val.stack || val.message;
-  return val;
-}
-
-},{"ms":772}],143:[function(require,module,exports){
+},{"has-cors":182}],162:[function(require,module,exports){
 (function (global){
 /**
  * Module dependencies.
@@ -25905,7 +26792,7 @@ exports.decodePayloadAsBinary = function (data, binaryType, callback) {
 };
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./keys":144,"./utf8":145,"after":2,"arraybuffer.slice":3,"base64-arraybuffer":21,"blob":28,"has-binary2":161}],144:[function(require,module,exports){
+},{"./keys":163,"./utf8":164,"after":2,"arraybuffer.slice":3,"base64-arraybuffer":62,"blob":69,"has-binary2":180}],163:[function(require,module,exports){
 
 /**
  * Gets the keys for an object.
@@ -25926,7 +26813,7 @@ module.exports = Object.keys || function keys (obj){
   return arr;
 };
 
-},{}],145:[function(require,module,exports){
+},{}],164:[function(require,module,exports){
 (function (global){
 /*! https://mths.be/utf8js v2.1.2 by @mathias */
 ;(function(root) {
@@ -26185,7 +27072,7 @@ module.exports = Object.keys || function keys (obj){
 }(this));
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],146:[function(require,module,exports){
+},{}],165:[function(require,module,exports){
 var prr = require('prr')
 
 function init (type, message, cause) {
@@ -26242,7 +27129,7 @@ module.exports = function (errno) {
   }
 }
 
-},{"prr":148}],147:[function(require,module,exports){
+},{"prr":167}],166:[function(require,module,exports){
 var all = module.exports.all = [
   {
     errno: -2,
@@ -26557,7 +27444,7 @@ all.forEach(function (error) {
 module.exports.custom = require('./custom')(module.exports)
 module.exports.create = module.exports.custom.createError
 
-},{"./custom":146}],148:[function(require,module,exports){
+},{"./custom":165}],167:[function(require,module,exports){
 /*!
   * prr
   * (c) 2013 Rod Vagg <rod@vagg.org>
@@ -26621,7 +27508,7 @@ module.exports.create = module.exports.custom.createError
 
   return prr
 })
-},{}],149:[function(require,module,exports){
+},{}],168:[function(require,module,exports){
 module.exports={
   "genesisGasLimit": {
     "v": 5000,
@@ -26858,7 +27745,7 @@ module.exports={
   }
 }
 
-},{}],150:[function(require,module,exports){
+},{}],169:[function(require,module,exports){
 (function (Buffer){
 const ethUtil = require('ethereumjs-util')
 const rlp = require('rlp')
@@ -26941,7 +27828,7 @@ Account.prototype.isEmpty = function () {
 }
 
 }).call(this,require("buffer").Buffer)
-},{"buffer":1013,"ethereumjs-util":155,"rlp":947}],151:[function(require,module,exports){
+},{"buffer":718,"ethereumjs-util":174,"rlp":655}],170:[function(require,module,exports){
 (function (Buffer){
 'use strict';
 
@@ -27197,7 +28084,7 @@ BlockHeader.prototype.isHomesteadReprice = function () {
 };
 
 }).call(this,require("buffer").Buffer)
-},{"buffer":1013,"ethereum-common/params.json":149,"ethereumjs-util":152}],152:[function(require,module,exports){
+},{"buffer":718,"ethereum-common/params.json":168,"ethereumjs-util":171}],171:[function(require,module,exports){
 (function (Buffer){
 'use strict';
 
@@ -27868,7 +28755,7 @@ exports.defineProperties = function (self, fields, data) {
 };
 
 }).call(this,require("buffer").Buffer)
-},{"assert":1010,"bn.js":29,"buffer":1013,"create-hash":67,"ethjs-util":156,"keccak":505,"rlp":947,"secp256k1":949}],153:[function(require,module,exports){
+},{"assert":715,"bn.js":70,"buffer":718,"create-hash":108,"ethjs-util":175,"keccak":342,"rlp":655,"secp256k1":657}],172:[function(require,module,exports){
 (function (Buffer){
 'use strict';
 
@@ -28196,9 +29083,9 @@ var Transaction = function () {
 
 module.exports = Transaction;
 }).call(this,require("buffer").Buffer)
-},{"buffer":1013,"ethereum-common/params.json":149,"ethereumjs-util":154}],154:[function(require,module,exports){
-arguments[4][152][0].apply(exports,arguments)
-},{"assert":1010,"bn.js":29,"buffer":1013,"create-hash":67,"dup":152,"ethjs-util":156,"keccak":505,"rlp":947,"secp256k1":949}],155:[function(require,module,exports){
+},{"buffer":718,"ethereum-common/params.json":168,"ethereumjs-util":173}],173:[function(require,module,exports){
+arguments[4][171][0].apply(exports,arguments)
+},{"assert":715,"bn.js":70,"buffer":718,"create-hash":108,"dup":171,"ethjs-util":175,"keccak":342,"rlp":655,"secp256k1":657}],174:[function(require,module,exports){
 (function (Buffer){
 const SHA3 = require('keccakjs')
 const secp256k1 = require('secp256k1')
@@ -28903,7 +29790,7 @@ exports.defineProperties = function (self, fields, data) {
 }
 
 }).call(this,require("buffer").Buffer)
-},{"assert":1010,"bn.js":29,"buffer":1013,"create-hash":67,"keccakjs":511,"rlp":947,"secp256k1":949}],156:[function(require,module,exports){
+},{"assert":715,"bn.js":70,"buffer":718,"create-hash":108,"keccakjs":348,"rlp":655,"secp256k1":657}],175:[function(require,module,exports){
 (function (Buffer){
 'use strict';
 
@@ -29126,7 +30013,7 @@ module.exports = {
   isHexString: isHexString
 };
 }).call(this,require("buffer").Buffer)
-},{"buffer":1013,"is-hex-prefixed":501,"strip-hex-prefix":994}],157:[function(require,module,exports){
+},{"buffer":718,"is-hex-prefixed":337,"strip-hex-prefix":696}],176:[function(require,module,exports){
 var Buffer = require('safe-buffer').Buffer
 var MD5 = require('md5.js')
 
@@ -29173,7 +30060,7 @@ function EVP_BytesToKey (password, salt, keyBits, ivLen) {
 
 module.exports = EVP_BytesToKey
 
-},{"md5.js":767,"safe-buffer":948}],158:[function(require,module,exports){
+},{"md5.js":509,"safe-buffer":656}],177:[function(require,module,exports){
 const EventEmitter = require('events').EventEmitter
 const assert = require('assert')
 const fsm = require('fsm')
@@ -29252,7 +30139,7 @@ function reach (curr, next, reachable) {
   return here[next].length === 1
 }
 
-},{"assert":1010,"events":1015,"fsm":159}],159:[function(require,module,exports){
+},{"assert":715,"events":720,"fsm":178}],178:[function(require,module,exports){
 function each(obj, iter) {
   for(var key in obj) {
     var value = obj[key]
@@ -29426,7 +30313,7 @@ var combine = exports.combine = function (fsm1, fsm2, start1, start2) {
 }
 
 
-},{}],160:[function(require,module,exports){
+},{}],179:[function(require,module,exports){
 // originally pulled out of simple-peer
 
 module.exports = function getBrowserRTC () {
@@ -29443,7 +30330,7 @@ module.exports = function getBrowserRTC () {
   return wrtc
 }
 
-},{}],161:[function(require,module,exports){
+},{}],180:[function(require,module,exports){
 (function (global){
 /* global Blob File */
 
@@ -29509,14 +30396,14 @@ function hasBinary (obj) {
 }
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"isarray":162}],162:[function(require,module,exports){
+},{"isarray":181}],181:[function(require,module,exports){
 var toString = {}.toString;
 
 module.exports = Array.isArray || function (arr) {
   return toString.call(arr) == '[object Array]';
 };
 
-},{}],163:[function(require,module,exports){
+},{}],182:[function(require,module,exports){
 
 /**
  * Module exports.
@@ -29535,7 +30422,7 @@ try {
   module.exports = false;
 }
 
-},{}],164:[function(require,module,exports){
+},{}],183:[function(require,module,exports){
 (function (Buffer){
 'use strict'
 var Transform = require('stream').Transform
@@ -29622,7 +30509,7 @@ HashBase.prototype._digest = function () {
 module.exports = HashBase
 
 }).call(this,require("buffer").Buffer)
-},{"buffer":1013,"inherits":181,"stream":1043}],165:[function(require,module,exports){
+},{"buffer":718,"inherits":200,"stream":748}],184:[function(require,module,exports){
 var hash = exports;
 
 hash.utils = require('./hash/utils');
@@ -29639,7 +30526,7 @@ hash.sha384 = hash.sha.sha384;
 hash.sha512 = hash.sha.sha512;
 hash.ripemd160 = hash.ripemd.ripemd160;
 
-},{"./hash/common":166,"./hash/hmac":167,"./hash/ripemd":168,"./hash/sha":169,"./hash/utils":176}],166:[function(require,module,exports){
+},{"./hash/common":185,"./hash/hmac":186,"./hash/ripemd":187,"./hash/sha":188,"./hash/utils":195}],185:[function(require,module,exports){
 'use strict';
 
 var utils = require('./utils');
@@ -29733,7 +30620,7 @@ BlockHash.prototype._pad = function pad() {
   return res;
 };
 
-},{"./utils":176,"minimalistic-assert":770}],167:[function(require,module,exports){
+},{"./utils":195,"minimalistic-assert":512}],186:[function(require,module,exports){
 'use strict';
 
 var utils = require('./utils');
@@ -29782,7 +30669,7 @@ Hmac.prototype.digest = function digest(enc) {
   return this.outer.digest(enc);
 };
 
-},{"./utils":176,"minimalistic-assert":770}],168:[function(require,module,exports){
+},{"./utils":195,"minimalistic-assert":512}],187:[function(require,module,exports){
 'use strict';
 
 var utils = require('./utils');
@@ -29930,7 +30817,7 @@ var sh = [
   8, 5, 12, 9, 12, 5, 14, 6, 8, 13, 6, 5, 15, 13, 11, 11
 ];
 
-},{"./common":166,"./utils":176}],169:[function(require,module,exports){
+},{"./common":185,"./utils":195}],188:[function(require,module,exports){
 'use strict';
 
 exports.sha1 = require('./sha/1');
@@ -29939,7 +30826,7 @@ exports.sha256 = require('./sha/256');
 exports.sha384 = require('./sha/384');
 exports.sha512 = require('./sha/512');
 
-},{"./sha/1":170,"./sha/224":171,"./sha/256":172,"./sha/384":173,"./sha/512":174}],170:[function(require,module,exports){
+},{"./sha/1":189,"./sha/224":190,"./sha/256":191,"./sha/384":192,"./sha/512":193}],189:[function(require,module,exports){
 'use strict';
 
 var utils = require('../utils');
@@ -30015,7 +30902,7 @@ SHA1.prototype._digest = function digest(enc) {
     return utils.split32(this.h, 'big');
 };
 
-},{"../common":166,"../utils":176,"./common":175}],171:[function(require,module,exports){
+},{"../common":185,"../utils":195,"./common":194}],190:[function(require,module,exports){
 'use strict';
 
 var utils = require('../utils');
@@ -30047,7 +30934,7 @@ SHA224.prototype._digest = function digest(enc) {
 };
 
 
-},{"../utils":176,"./256":172}],172:[function(require,module,exports){
+},{"../utils":195,"./256":191}],191:[function(require,module,exports){
 'use strict';
 
 var utils = require('../utils');
@@ -30154,7 +31041,7 @@ SHA256.prototype._digest = function digest(enc) {
     return utils.split32(this.h, 'big');
 };
 
-},{"../common":166,"../utils":176,"./common":175,"minimalistic-assert":770}],173:[function(require,module,exports){
+},{"../common":185,"../utils":195,"./common":194,"minimalistic-assert":512}],192:[function(require,module,exports){
 'use strict';
 
 var utils = require('../utils');
@@ -30191,7 +31078,7 @@ SHA384.prototype._digest = function digest(enc) {
     return utils.split32(this.h.slice(0, 12), 'big');
 };
 
-},{"../utils":176,"./512":174}],174:[function(require,module,exports){
+},{"../utils":195,"./512":193}],193:[function(require,module,exports){
 'use strict';
 
 var utils = require('../utils');
@@ -30523,7 +31410,7 @@ function g1_512_lo(xh, xl) {
   return r;
 }
 
-},{"../common":166,"../utils":176,"minimalistic-assert":770}],175:[function(require,module,exports){
+},{"../common":185,"../utils":195,"minimalistic-assert":512}],194:[function(require,module,exports){
 'use strict';
 
 var utils = require('../utils');
@@ -30574,7 +31461,7 @@ function g1_256(x) {
 }
 exports.g1_256 = g1_256;
 
-},{"../utils":176}],176:[function(require,module,exports){
+},{"../utils":195}],195:[function(require,module,exports){
 'use strict';
 
 var assert = require('minimalistic-assert');
@@ -30829,7 +31716,7 @@ function shr64_lo(ah, al, num) {
 }
 exports.shr64_lo = shr64_lo;
 
-},{"inherits":181,"minimalistic-assert":770}],177:[function(require,module,exports){
+},{"inherits":200,"minimalistic-assert":512}],196:[function(require,module,exports){
 'use strict';
 
 var hash = require('hash.js');
@@ -30944,7 +31831,7 @@ HmacDRBG.prototype.generate = function generate(len, enc, add, addEnc) {
   return utils.encode(res, enc);
 };
 
-},{"hash.js":165,"minimalistic-assert":770,"minimalistic-crypto-utils":771}],178:[function(require,module,exports){
+},{"hash.js":184,"minimalistic-assert":512,"minimalistic-crypto-utils":513}],197:[function(require,module,exports){
 /**
  * Copyright (c) 2016 Tim Kuijsten
  *
@@ -31082,7 +31969,7 @@ function idbReadableStream(db, storeName, opts) {
 
 module.exports = idbReadableStream
 
-},{"stream":1043,"xtend":1008}],179:[function(require,module,exports){
+},{"stream":748,"xtend":713}],198:[function(require,module,exports){
 exports.read = function (buffer, offset, isLE, mLen, nBytes) {
   var e, m
   var eLen = nBytes * 8 - mLen - 1
@@ -31168,7 +32055,7 @@ exports.write = function (buffer, value, offset, isLE, mLen, nBytes) {
   buffer[offset + i - d] |= s * 128
 }
 
-},{}],180:[function(require,module,exports){
+},{}],199:[function(require,module,exports){
 
 var indexOf = [].indexOf;
 
@@ -31179,7 +32066,7 @@ module.exports = function(arr, obj){
   }
   return -1;
 };
-},{}],181:[function(require,module,exports){
+},{}],200:[function(require,module,exports){
 if (typeof Object.create === 'function') {
   // implementation from standard node.js 'util' module
   module.exports = function inherits(ctor, superCtor) {
@@ -31204,7 +32091,7 @@ if (typeof Object.create === 'function') {
   }
 }
 
-},{}],182:[function(require,module,exports){
+},{}],201:[function(require,module,exports){
 'use strict'
 
 const defer = require('pull-defer/duplex')
@@ -31266,155 +32153,12 @@ module.exports = class Connection {
   }
 }
 
-},{"pull-defer/duplex":873}],183:[function(require,module,exports){
+},{"pull-defer/duplex":581}],202:[function(require,module,exports){
 'use strict'
 
 exports.Connection = require('./connection')
 
-},{"./connection":182}],184:[function(require,module,exports){
-arguments[4][85][0].apply(exports,arguments)
-},{"./slice":185,"_process":1024,"dup":85}],185:[function(require,module,exports){
-arguments[4][86][0].apply(exports,arguments)
-},{"dup":86}],186:[function(require,module,exports){
-'use strict';
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-
-var _setImmediate = require('./internal/setImmediate');
-
-var _setImmediate2 = _interopRequireDefault(_setImmediate);
-
-function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
-
-/**
- * Calls `callback` on a later loop around the event loop. In Node.js this just
- * calls `setImmediate`.  In the browser it will use `setImmediate` if
- * available, otherwise `setTimeout(callback, 0)`, which means other higher
- * priority events may precede the execution of `callback`.
- *
- * This is used internally for browser-compatibility purposes.
- *
- * @name setImmediate
- * @static
- * @memberOf module:Utils
- * @method
- * @alias nextTick
- * @category Util
- * @param {Function} callback - The function to call on a later loop around
- * the event loop. Invoked with (args...).
- * @param {...*} args... - any number of additional arguments to pass to the
- * callback on the next tick.
- * @example
- *
- * var call_order = [];
- * async.nextTick(function() {
- *     call_order.push('two');
- *     // call_order now equals ['one','two']
- * });
- * call_order.push('one');
- *
- * async.setImmediate(function (a, b, c) {
- *     // a, b, and c equal 1, 2, and 3
- * }, 1, 2, 3);
- */
-exports.default = _setImmediate2.default;
-module.exports = exports['default'];
-},{"./internal/setImmediate":184}],187:[function(require,module,exports){
-/**
- * Convert array of 16 byte values to UUID string format of the form:
- * XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX
- */
-var byteToHex = [];
-for (var i = 0; i < 256; ++i) {
-  byteToHex[i] = (i + 0x100).toString(16).substr(1);
-}
-
-function bytesToUuid(buf, offset) {
-  var i = offset || 0;
-  var bth = byteToHex;
-  return bth[buf[i++]] + bth[buf[i++]] +
-          bth[buf[i++]] + bth[buf[i++]] + '-' +
-          bth[buf[i++]] + bth[buf[i++]] + '-' +
-          bth[buf[i++]] + bth[buf[i++]] + '-' +
-          bth[buf[i++]] + bth[buf[i++]] + '-' +
-          bth[buf[i++]] + bth[buf[i++]] +
-          bth[buf[i++]] + bth[buf[i++]] +
-          bth[buf[i++]] + bth[buf[i++]];
-}
-
-module.exports = bytesToUuid;
-
-},{}],188:[function(require,module,exports){
-(function (global){
-// Unique ID creation requires a high quality random # generator.  In the
-// browser this is a little complicated due to unknown quality of Math.random()
-// and inconsistent support for the `crypto` API.  We do the best we can via
-// feature-detection
-var rng;
-
-var crypto = global.crypto || global.msCrypto; // for IE 11
-if (crypto && crypto.getRandomValues) {
-  // WHATWG crypto RNG - http://wiki.whatwg.org/wiki/Crypto
-  var rnds8 = new Uint8Array(16); // eslint-disable-line no-undef
-  rng = function whatwgRNG() {
-    crypto.getRandomValues(rnds8);
-    return rnds8;
-  };
-}
-
-if (!rng) {
-  // Math.random()-based (RNG)
-  //
-  // If all else fails, use Math.random().  It's fast, but is of unspecified
-  // quality.
-  var rnds = new Array(16);
-  rng = function() {
-    for (var i = 0, r; i < 16; i++) {
-      if ((i & 0x03) === 0) r = Math.random() * 0x100000000;
-      rnds[i] = r >>> ((i & 0x03) << 3) & 0xff;
-    }
-
-    return rnds;
-  };
-}
-
-module.exports = rng;
-
-}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],189:[function(require,module,exports){
-var rng = require('./lib/rng');
-var bytesToUuid = require('./lib/bytesToUuid');
-
-function v4(options, buf, offset) {
-  var i = buf && offset || 0;
-
-  if (typeof(options) == 'string') {
-    buf = options == 'binary' ? new Array(16) : null;
-    options = null;
-  }
-  options = options || {};
-
-  var rnds = options.random || (options.rng || rng)();
-
-  // Per 4.4, set bits for version and `clock_seq_hi_and_reserved`
-  rnds[6] = (rnds[6] & 0x0f) | 0x40;
-  rnds[8] = (rnds[8] & 0x3f) | 0x80;
-
-  // Copy bytes to buffer, if provided
-  if (buf) {
-    for (var ii = 0; ii < 16; ++ii) {
-      buf[i + ii] = rnds[ii];
-    }
-  }
-
-  return buf || bytesToUuid(rnds);
-}
-
-module.exports = v4;
-
-},{"./lib/bytesToUuid":187,"./lib/rng":188}],190:[function(require,module,exports){
+},{"./connection":201}],203:[function(require,module,exports){
 /* @flow */
 'use strict'
 
@@ -31482,7 +32226,7 @@ export type Order<Value> = (QueryResult<Value>, Callback<QueryResult<Value>>) =>
 
 */
 
-},{"./key":191,"./memory":192,"./utils":193}],191:[function(require,module,exports){
+},{"./key":204,"./memory":205,"./utils":206}],204:[function(require,module,exports){
 (function (Buffer){
 /* @flow */
 'use strict'
@@ -31858,7 +32602,7 @@ function namespaceValue (ns /* : string */) /* : string */ {
 module.exports = Key
 
 }).call(this,require("buffer").Buffer)
-},{"buffer":1013,"path":1022,"uuid/v4":189}],192:[function(require,module,exports){
+},{"buffer":718,"path":727,"uuid/v4":704}],205:[function(require,module,exports){
 /* @flow */
 'use strict'
 
@@ -31990,7 +32734,7 @@ class MemoryDatastore {
 
 module.exports = MemoryDatastore
 
-},{"./key":191,"./utils":193,"async/setImmediate":186,"pull-stream":892}],193:[function(require,module,exports){
+},{"./key":204,"./utils":206,"async/setImmediate":54,"pull-stream":600}],206:[function(require,module,exports){
 'use strict'
 
 const pull = require('pull-stream')
@@ -32071,7 +32815,7 @@ exports.tmpdir = () => {
   return path.join(os.tmpdir(), uuid())
 }
 
-},{"os":1021,"path":1022,"pull-defer/source":876,"pull-stream":892,"uuid/v4":189}],194:[function(require,module,exports){
+},{"os":726,"path":727,"pull-defer/source":584,"pull-stream":600,"uuid/v4":704}],207:[function(require,module,exports){
 'use strict';
 
 var ip = exports;
@@ -32489,510 +33233,433 @@ ip.fromLong = function(ipl) {
       (ipl & 255) );
 };
 
-},{"buffer":1013,"os":1021}],195:[function(require,module,exports){
-arguments[4][72][0].apply(exports,arguments)
-},{"./internal/initialParams":208,"./internal/setImmediate":215,"dup":72,"lodash/isObject":758}],196:[function(require,module,exports){
-arguments[4][73][0].apply(exports,arguments)
-},{"./eachOf":198,"./internal/withoutIndex":217,"./internal/wrapAsync":218,"dup":73}],197:[function(require,module,exports){
-'use strict';
+},{"buffer":718,"os":726}],208:[function(require,module,exports){
+(function (process){
+/**
+ * This is the web browser implementation of `debug()`.
+ *
+ * Expose `debug()` as the module.
+ */
 
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-exports.default = eachLimit;
-
-var _eachOfLimit = require('./internal/eachOfLimit');
-
-var _eachOfLimit2 = _interopRequireDefault(_eachOfLimit);
-
-var _withoutIndex = require('./internal/withoutIndex');
-
-var _withoutIndex2 = _interopRequireDefault(_withoutIndex);
-
-var _wrapAsync = require('./internal/wrapAsync');
-
-var _wrapAsync2 = _interopRequireDefault(_wrapAsync);
-
-function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+exports = module.exports = require('./debug');
+exports.log = log;
+exports.formatArgs = formatArgs;
+exports.save = save;
+exports.load = load;
+exports.useColors = useColors;
+exports.storage = 'undefined' != typeof chrome
+               && 'undefined' != typeof chrome.storage
+                  ? chrome.storage.local
+                  : localstorage();
 
 /**
- * The same as [`each`]{@link module:Collections.each} but runs a maximum of `limit` async operations at a time.
- *
- * @name eachLimit
- * @static
- * @memberOf module:Collections
- * @method
- * @see [async.each]{@link module:Collections.each}
- * @alias forEachLimit
- * @category Collection
- * @param {Array|Iterable|Object} coll - A collection to iterate over.
- * @param {number} limit - The maximum number of async operations at a time.
- * @param {AsyncFunction} iteratee - An async function to apply to each item in
- * `coll`.
- * The array index is not passed to the iteratee.
- * If you need the index, use `eachOfLimit`.
- * Invoked with (item, callback).
- * @param {Function} [callback] - A callback which is called when all
- * `iteratee` functions have finished, or an error occurs. Invoked with (err).
+ * Colors.
  */
-function eachLimit(coll, limit, iteratee, callback) {
-  (0, _eachOfLimit2.default)(limit)(coll, (0, _withoutIndex2.default)((0, _wrapAsync2.default)(iteratee)), callback);
+
+exports.colors = [
+  '#0000CC', '#0000FF', '#0033CC', '#0033FF', '#0066CC', '#0066FF', '#0099CC',
+  '#0099FF', '#00CC00', '#00CC33', '#00CC66', '#00CC99', '#00CCCC', '#00CCFF',
+  '#3300CC', '#3300FF', '#3333CC', '#3333FF', '#3366CC', '#3366FF', '#3399CC',
+  '#3399FF', '#33CC00', '#33CC33', '#33CC66', '#33CC99', '#33CCCC', '#33CCFF',
+  '#6600CC', '#6600FF', '#6633CC', '#6633FF', '#66CC00', '#66CC33', '#9900CC',
+  '#9900FF', '#9933CC', '#9933FF', '#99CC00', '#99CC33', '#CC0000', '#CC0033',
+  '#CC0066', '#CC0099', '#CC00CC', '#CC00FF', '#CC3300', '#CC3333', '#CC3366',
+  '#CC3399', '#CC33CC', '#CC33FF', '#CC6600', '#CC6633', '#CC9900', '#CC9933',
+  '#CCCC00', '#CCCC33', '#FF0000', '#FF0033', '#FF0066', '#FF0099', '#FF00CC',
+  '#FF00FF', '#FF3300', '#FF3333', '#FF3366', '#FF3399', '#FF33CC', '#FF33FF',
+  '#FF6600', '#FF6633', '#FF9900', '#FF9933', '#FFCC00', '#FFCC33'
+];
+
+/**
+ * Currently only WebKit-based Web Inspectors, Firefox >= v31,
+ * and the Firebug extension (any Firefox version) are known
+ * to support "%c" CSS customizations.
+ *
+ * TODO: add a `localStorage` variable to explicitly enable/disable colors
+ */
+
+function useColors() {
+  // NB: In an Electron preload script, document will be defined but not fully
+  // initialized. Since we know we're in Chrome, we'll just detect this case
+  // explicitly
+  if (typeof window !== 'undefined' && window.process && window.process.type === 'renderer') {
+    return true;
+  }
+
+  // Internet Explorer and Edge do not support colors.
+  if (typeof navigator !== 'undefined' && navigator.userAgent && navigator.userAgent.toLowerCase().match(/(edge|trident)\/(\d+)/)) {
+    return false;
+  }
+
+  // is webkit? http://stackoverflow.com/a/16459606/376773
+  // document is undefined in react-native: https://github.com/facebook/react-native/pull/1632
+  return (typeof document !== 'undefined' && document.documentElement && document.documentElement.style && document.documentElement.style.WebkitAppearance) ||
+    // is firebug? http://stackoverflow.com/a/398120/376773
+    (typeof window !== 'undefined' && window.console && (window.console.firebug || (window.console.exception && window.console.table))) ||
+    // is firefox >= v31?
+    // https://developer.mozilla.org/en-US/docs/Tools/Web_Console#Styling_messages
+    (typeof navigator !== 'undefined' && navigator.userAgent && navigator.userAgent.toLowerCase().match(/firefox\/(\d+)/) && parseInt(RegExp.$1, 10) >= 31) ||
+    // double check webkit in userAgent just in case we are in a worker
+    (typeof navigator !== 'undefined' && navigator.userAgent && navigator.userAgent.toLowerCase().match(/applewebkit\/(\d+)/));
 }
-module.exports = exports['default'];
-},{"./internal/eachOfLimit":205,"./internal/withoutIndex":217,"./internal/wrapAsync":218}],198:[function(require,module,exports){
-arguments[4][74][0].apply(exports,arguments)
-},{"./eachOfLimit":199,"./internal/breakLoop":202,"./internal/doLimit":203,"./internal/once":211,"./internal/onlyOnce":212,"./internal/wrapAsync":218,"dup":74,"lodash/isArrayLike":754,"lodash/noop":762}],199:[function(require,module,exports){
-arguments[4][75][0].apply(exports,arguments)
-},{"./internal/eachOfLimit":205,"./internal/wrapAsync":218,"dup":75}],200:[function(require,module,exports){
-'use strict';
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-
-var _eachOfLimit = require('./eachOfLimit');
-
-var _eachOfLimit2 = _interopRequireDefault(_eachOfLimit);
-
-var _doLimit = require('./internal/doLimit');
-
-var _doLimit2 = _interopRequireDefault(_doLimit);
-
-function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
 /**
- * The same as [`eachOf`]{@link module:Collections.eachOf} but runs only a single async operation at a time.
- *
- * @name eachOfSeries
- * @static
- * @memberOf module:Collections
- * @method
- * @see [async.eachOf]{@link module:Collections.eachOf}
- * @alias forEachOfSeries
- * @category Collection
- * @param {Array|Iterable|Object} coll - A collection to iterate over.
- * @param {AsyncFunction} iteratee - An async function to apply to each item in
- * `coll`.
- * Invoked with (item, key, callback).
- * @param {Function} [callback] - A callback which is called when all `iteratee`
- * functions have finished, or an error occurs. Invoked with (err).
+ * Map %j to `JSON.stringify()`, since no Web Inspectors do that by default.
  */
-exports.default = (0, _doLimit2.default)(_eachOfLimit2.default, 1);
-module.exports = exports['default'];
-},{"./eachOfLimit":199,"./internal/doLimit":203}],201:[function(require,module,exports){
-'use strict';
 
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
+exports.formatters.j = function(v) {
+  try {
+    return JSON.stringify(v);
+  } catch (err) {
+    return '[UnexpectedJSONParseError]: ' + err.message;
+  }
+};
 
-var _eachLimit = require('./eachLimit');
-
-var _eachLimit2 = _interopRequireDefault(_eachLimit);
-
-var _doLimit = require('./internal/doLimit');
-
-var _doLimit2 = _interopRequireDefault(_doLimit);
-
-function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
 /**
- * The same as [`each`]{@link module:Collections.each} but runs only a single async operation at a time.
+ * Colorize log arguments if enabled.
  *
- * @name eachSeries
- * @static
- * @memberOf module:Collections
- * @method
- * @see [async.each]{@link module:Collections.each}
- * @alias forEachSeries
- * @category Collection
- * @param {Array|Iterable|Object} coll - A collection to iterate over.
- * @param {AsyncFunction} iteratee - An async function to apply to each
- * item in `coll`.
- * The array index is not passed to the iteratee.
- * If you need the index, use `eachOfSeries`.
- * Invoked with (item, callback).
- * @param {Function} [callback] - A callback which is called when all
- * `iteratee` functions have finished, or an error occurs. Invoked with (err).
+ * @api public
  */
-exports.default = (0, _doLimit2.default)(_eachLimit2.default, 1);
-module.exports = exports['default'];
-},{"./eachLimit":197,"./internal/doLimit":203}],202:[function(require,module,exports){
-arguments[4][76][0].apply(exports,arguments)
-},{"dup":76}],203:[function(require,module,exports){
-arguments[4][77][0].apply(exports,arguments)
-},{"dup":77}],204:[function(require,module,exports){
-'use strict';
 
-Object.defineProperty(exports, "__esModule", {
-    value: true
-});
-exports.default = doParallel;
+function formatArgs(args) {
+  var useColors = this.useColors;
 
-var _eachOf = require('../eachOf');
+  args[0] = (useColors ? '%c' : '')
+    + this.namespace
+    + (useColors ? ' %c' : ' ')
+    + args[0]
+    + (useColors ? '%c ' : ' ')
+    + '+' + exports.humanize(this.diff);
 
-var _eachOf2 = _interopRequireDefault(_eachOf);
+  if (!useColors) return;
 
-var _wrapAsync = require('./wrapAsync');
+  var c = 'color: ' + this.color;
+  args.splice(1, 0, c, 'color: inherit')
 
-var _wrapAsync2 = _interopRequireDefault(_wrapAsync);
+  // the final "%c" is somewhat tricky, because there could be other
+  // arguments passed either before or after the %c, so we need to
+  // figure out the correct index to insert the CSS into
+  var index = 0;
+  var lastC = 0;
+  args[0].replace(/%[a-zA-Z%]/g, function(match) {
+    if ('%%' === match) return;
+    index++;
+    if ('%c' === match) {
+      // we only are interested in the *last* %c
+      // (the user may have provided their own)
+      lastC = index;
+    }
+  });
 
-function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
-
-function doParallel(fn) {
-    return function (obj, iteratee, callback) {
-        return fn(_eachOf2.default, obj, (0, _wrapAsync2.default)(iteratee), callback);
-    };
+  args.splice(lastC, 0, c);
 }
-module.exports = exports['default'];
-},{"../eachOf":198,"./wrapAsync":218}],205:[function(require,module,exports){
-arguments[4][78][0].apply(exports,arguments)
-},{"./breakLoop":202,"./iterator":209,"./once":211,"./onlyOnce":212,"dup":78,"lodash/noop":762}],206:[function(require,module,exports){
-'use strict';
 
-Object.defineProperty(exports, "__esModule", {
-    value: true
-});
-exports.default = _filter;
+/**
+ * Invokes `console.log()` when available.
+ * No-op when `console.log` is not a "function".
+ *
+ * @api public
+ */
 
-var _arrayMap = require('lodash/_arrayMap');
+function log() {
+  // this hackery is required for IE8/9, where
+  // the `console.log` function doesn't have 'apply'
+  return 'object' === typeof console
+    && console.log
+    && Function.prototype.apply.call(console.log, console, arguments);
+}
 
-var _arrayMap2 = _interopRequireDefault(_arrayMap);
+/**
+ * Save `namespaces`.
+ *
+ * @param {String} namespaces
+ * @api private
+ */
 
-var _isArrayLike = require('lodash/isArrayLike');
+function save(namespaces) {
+  try {
+    if (null == namespaces) {
+      exports.storage.removeItem('debug');
+    } else {
+      exports.storage.debug = namespaces;
+    }
+  } catch(e) {}
+}
 
-var _isArrayLike2 = _interopRequireDefault(_isArrayLike);
+/**
+ * Load `namespaces`.
+ *
+ * @return {String} returns the previously persisted debug modes
+ * @api private
+ */
 
-var _baseProperty = require('lodash/_baseProperty');
+function load() {
+  var r;
+  try {
+    r = exports.storage.debug;
+  } catch(e) {}
 
-var _baseProperty2 = _interopRequireDefault(_baseProperty);
+  // If debug isn't set in LS, and we're in Electron, try to load $DEBUG
+  if (!r && typeof process !== 'undefined' && 'env' in process) {
+    r = process.env.DEBUG;
+  }
 
-var _noop = require('lodash/noop');
+  return r;
+}
 
-var _noop2 = _interopRequireDefault(_noop);
+/**
+ * Enable namespaces listed in `localStorage.debug` initially.
+ */
 
-var _wrapAsync = require('./wrapAsync');
+exports.enable(load());
 
-var _wrapAsync2 = _interopRequireDefault(_wrapAsync);
+/**
+ * Localstorage attempts to return the localstorage.
+ *
+ * This is necessary because safari throws
+ * when a user disables cookies/localstorage
+ * and you attempt to access it.
+ *
+ * @return {LocalStorage}
+ * @api private
+ */
 
-function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+function localstorage() {
+  try {
+    return window.localStorage;
+  } catch (e) {}
+}
 
-function filterArray(eachfn, arr, iteratee, callback) {
-    var truthValues = new Array(arr.length);
-    eachfn(arr, function (x, index, callback) {
-        iteratee(x, function (err, v) {
-            truthValues[index] = !!v;
-            callback(err);
-        });
-    }, function (err) {
-        if (err) return callback(err);
-        var results = [];
-        for (var i = 0; i < arr.length; i++) {
-            if (truthValues[i]) results.push(arr[i]);
-        }
-        callback(null, results);
+}).call(this,require('_process'))
+},{"./debug":209,"_process":729}],209:[function(require,module,exports){
+
+/**
+ * This is the common logic for both the Node.js and web browser
+ * implementations of `debug()`.
+ *
+ * Expose `debug()` as the module.
+ */
+
+exports = module.exports = createDebug.debug = createDebug['default'] = createDebug;
+exports.coerce = coerce;
+exports.disable = disable;
+exports.enable = enable;
+exports.enabled = enabled;
+exports.humanize = require('ms');
+
+/**
+ * Active `debug` instances.
+ */
+exports.instances = [];
+
+/**
+ * The currently active debug mode names, and names to skip.
+ */
+
+exports.names = [];
+exports.skips = [];
+
+/**
+ * Map of special "%n" handling functions, for the debug "format" argument.
+ *
+ * Valid key names are a single, lower or upper-case letter, i.e. "n" and "N".
+ */
+
+exports.formatters = {};
+
+/**
+ * Select a color.
+ * @param {String} namespace
+ * @return {Number}
+ * @api private
+ */
+
+function selectColor(namespace) {
+  var hash = 0, i;
+
+  for (i in namespace) {
+    hash  = ((hash << 5) - hash) + namespace.charCodeAt(i);
+    hash |= 0; // Convert to 32bit integer
+  }
+
+  return exports.colors[Math.abs(hash) % exports.colors.length];
+}
+
+/**
+ * Create a debugger with the given `namespace`.
+ *
+ * @param {String} namespace
+ * @return {Function}
+ * @api public
+ */
+
+function createDebug(namespace) {
+
+  var prevTime;
+
+  function debug() {
+    // disabled?
+    if (!debug.enabled) return;
+
+    var self = debug;
+
+    // set `diff` timestamp
+    var curr = +new Date();
+    var ms = curr - (prevTime || curr);
+    self.diff = ms;
+    self.prev = prevTime;
+    self.curr = curr;
+    prevTime = curr;
+
+    // turn the `arguments` into a proper Array
+    var args = new Array(arguments.length);
+    for (var i = 0; i < args.length; i++) {
+      args[i] = arguments[i];
+    }
+
+    args[0] = exports.coerce(args[0]);
+
+    if ('string' !== typeof args[0]) {
+      // anything else let's inspect with %O
+      args.unshift('%O');
+    }
+
+    // apply any `formatters` transformations
+    var index = 0;
+    args[0] = args[0].replace(/%([a-zA-Z%])/g, function(match, format) {
+      // if we encounter an escaped % then don't increase the array index
+      if (match === '%%') return match;
+      index++;
+      var formatter = exports.formatters[format];
+      if ('function' === typeof formatter) {
+        var val = args[index];
+        match = formatter.call(self, val);
+
+        // now we need to remove `args[index]` since it's inlined in the `format`
+        args.splice(index, 1);
+        index--;
+      }
+      return match;
     });
+
+    // apply env-specific formatting (colors, etc.)
+    exports.formatArgs.call(self, args);
+
+    var logFn = debug.log || exports.log || console.log.bind(console);
+    logFn.apply(self, args);
+  }
+
+  debug.namespace = namespace;
+  debug.enabled = exports.enabled(namespace);
+  debug.useColors = exports.useColors();
+  debug.color = selectColor(namespace);
+  debug.destroy = destroy;
+
+  // env-specific initialization logic for debug instances
+  if ('function' === typeof exports.init) {
+    exports.init(debug);
+  }
+
+  exports.instances.push(debug);
+
+  return debug;
 }
 
-function filterGeneric(eachfn, coll, iteratee, callback) {
-    var results = [];
-    eachfn(coll, function (x, index, callback) {
-        iteratee(x, function (err, v) {
-            if (err) {
-                callback(err);
-            } else {
-                if (v) {
-                    results.push({ index: index, value: x });
-                }
-                callback();
-            }
-        });
-    }, function (err) {
-        if (err) {
-            callback(err);
-        } else {
-            callback(null, (0, _arrayMap2.default)(results.sort(function (a, b) {
-                return a.index - b.index;
-            }), (0, _baseProperty2.default)('value')));
-        }
-    });
+function destroy () {
+  var index = exports.instances.indexOf(this);
+  if (index !== -1) {
+    exports.instances.splice(index, 1);
+    return true;
+  } else {
+    return false;
+  }
 }
-
-function _filter(eachfn, coll, iteratee, callback) {
-    var filter = (0, _isArrayLike2.default)(coll) ? filterArray : filterGeneric;
-    filter(eachfn, coll, (0, _wrapAsync2.default)(iteratee), callback || _noop2.default);
-}
-module.exports = exports['default'];
-},{"./wrapAsync":218,"lodash/_arrayMap":730,"lodash/_baseProperty":738,"lodash/isArrayLike":754,"lodash/noop":762}],207:[function(require,module,exports){
-arguments[4][79][0].apply(exports,arguments)
-},{"dup":79}],208:[function(require,module,exports){
-arguments[4][80][0].apply(exports,arguments)
-},{"./slice":216,"dup":80}],209:[function(require,module,exports){
-arguments[4][81][0].apply(exports,arguments)
-},{"./getIterator":207,"dup":81,"lodash/isArrayLike":754,"lodash/keys":761}],210:[function(require,module,exports){
-'use strict';
-
-Object.defineProperty(exports, "__esModule", {
-    value: true
-});
-exports.default = _asyncMap;
-
-var _noop = require('lodash/noop');
-
-var _noop2 = _interopRequireDefault(_noop);
-
-var _wrapAsync = require('./wrapAsync');
-
-var _wrapAsync2 = _interopRequireDefault(_wrapAsync);
-
-function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
-
-function _asyncMap(eachfn, arr, iteratee, callback) {
-    callback = callback || _noop2.default;
-    arr = arr || [];
-    var results = [];
-    var counter = 0;
-    var _iteratee = (0, _wrapAsync2.default)(iteratee);
-
-    eachfn(arr, function (value, _, callback) {
-        var index = counter++;
-        _iteratee(value, function (err, v) {
-            results[index] = v;
-            callback(err);
-        });
-    }, function (err) {
-        callback(err, results);
-    });
-}
-module.exports = exports['default'];
-},{"./wrapAsync":218,"lodash/noop":762}],211:[function(require,module,exports){
-arguments[4][82][0].apply(exports,arguments)
-},{"dup":82}],212:[function(require,module,exports){
-arguments[4][83][0].apply(exports,arguments)
-},{"dup":83}],213:[function(require,module,exports){
-arguments[4][84][0].apply(exports,arguments)
-},{"./slice":216,"./wrapAsync":218,"dup":84,"lodash/isArrayLike":754,"lodash/noop":762}],214:[function(require,module,exports){
-'use strict';
-
-Object.defineProperty(exports, "__esModule", {
-    value: true
-});
-exports.default = reject;
-
-var _filter = require('./filter');
-
-var _filter2 = _interopRequireDefault(_filter);
-
-function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
-
-function reject(eachfn, arr, iteratee, callback) {
-    (0, _filter2.default)(eachfn, arr, function (value, cb) {
-        iteratee(value, function (err, v) {
-            cb(err, !v);
-        });
-    }, callback);
-}
-module.exports = exports['default'];
-},{"./filter":206}],215:[function(require,module,exports){
-arguments[4][85][0].apply(exports,arguments)
-},{"./slice":216,"_process":1024,"dup":85}],216:[function(require,module,exports){
-arguments[4][86][0].apply(exports,arguments)
-},{"dup":86}],217:[function(require,module,exports){
-arguments[4][87][0].apply(exports,arguments)
-},{"dup":87}],218:[function(require,module,exports){
-arguments[4][88][0].apply(exports,arguments)
-},{"../asyncify":195,"dup":88}],219:[function(require,module,exports){
-'use strict';
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-
-var _doParallel = require('./internal/doParallel');
-
-var _doParallel2 = _interopRequireDefault(_doParallel);
-
-var _map = require('./internal/map');
-
-var _map2 = _interopRequireDefault(_map);
-
-function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
 /**
- * Produces a new collection of values by mapping each value in `coll` through
- * the `iteratee` function. The `iteratee` is called with an item from `coll`
- * and a callback for when it has finished processing. Each of these callback
- * takes 2 arguments: an `error`, and the transformed item from `coll`. If
- * `iteratee` passes an error to its callback, the main `callback` (for the
- * `map` function) is immediately called with the error.
+ * Enables a debug mode by namespaces. This can include modes
+ * separated by a colon and wildcards.
  *
- * Note, that since this function applies the `iteratee` to each item in
- * parallel, there is no guarantee that the `iteratee` functions will complete
- * in order. However, the results array will be in the same order as the
- * original `coll`.
- *
- * If `map` is passed an Object, the results will be an Array.  The results
- * will roughly be in the order of the original Objects' keys (but this can
- * vary across JavaScript engines).
- *
- * @name map
- * @static
- * @memberOf module:Collections
- * @method
- * @category Collection
- * @param {Array|Iterable|Object} coll - A collection to iterate over.
- * @param {AsyncFunction} iteratee - An async function to apply to each item in
- * `coll`.
- * The iteratee should complete with the transformed item.
- * Invoked with (item, callback).
- * @param {Function} [callback] - A callback which is called when all `iteratee`
- * functions have finished, or an error occurs. Results is an Array of the
- * transformed items from the `coll`. Invoked with (err, results).
- * @example
- *
- * async.map(['file1','file2','file3'], fs.stat, function(err, results) {
- *     // results is now an array of stats for each file
- * });
+ * @param {String} namespaces
+ * @api public
  */
-exports.default = (0, _doParallel2.default)(_map2.default);
-module.exports = exports['default'];
-},{"./internal/doParallel":204,"./internal/map":210}],220:[function(require,module,exports){
-'use strict';
 
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
+function enable(namespaces) {
+  exports.save(namespaces);
 
-var _reject = require('./internal/reject');
+  exports.names = [];
+  exports.skips = [];
 
-var _reject2 = _interopRequireDefault(_reject);
+  var i;
+  var split = (typeof namespaces === 'string' ? namespaces : '').split(/[\s,]+/);
+  var len = split.length;
 
-var _doParallel = require('./internal/doParallel');
+  for (i = 0; i < len; i++) {
+    if (!split[i]) continue; // ignore empty strings
+    namespaces = split[i].replace(/\*/g, '.*?');
+    if (namespaces[0] === '-') {
+      exports.skips.push(new RegExp('^' + namespaces.substr(1) + '$'));
+    } else {
+      exports.names.push(new RegExp('^' + namespaces + '$'));
+    }
+  }
 
-var _doParallel2 = _interopRequireDefault(_doParallel);
-
-function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
-
-/**
- * The opposite of [`filter`]{@link module:Collections.filter}. Removes values that pass an `async` truth test.
- *
- * @name reject
- * @static
- * @memberOf module:Collections
- * @method
- * @see [async.filter]{@link module:Collections.filter}
- * @category Collection
- * @param {Array|Iterable|Object} coll - A collection to iterate over.
- * @param {Function} iteratee - An async truth test to apply to each item in
- * `coll`.
- * The should complete with a boolean value as its `result`.
- * Invoked with (item, callback).
- * @param {Function} [callback] - A callback which is called after all the
- * `iteratee` functions have finished. Invoked with (err, results).
- * @example
- *
- * async.reject(['file1','file2','file3'], function(filePath, callback) {
- *     fs.access(filePath, function(err) {
- *         callback(null, !err)
- *     });
- * }, function(err, results) {
- *     // results now equals an array of missing files
- *     createFiles(results);
- * });
- */
-exports.default = (0, _doParallel2.default)(_reject2.default);
-module.exports = exports['default'];
-},{"./internal/doParallel":204,"./internal/reject":214}],221:[function(require,module,exports){
-'use strict';
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-exports.default = series;
-
-var _parallel = require('./internal/parallel');
-
-var _parallel2 = _interopRequireDefault(_parallel);
-
-var _eachOfSeries = require('./eachOfSeries');
-
-var _eachOfSeries2 = _interopRequireDefault(_eachOfSeries);
-
-function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
-
-/**
- * Run the functions in the `tasks` collection in series, each one running once
- * the previous function has completed. If any functions in the series pass an
- * error to its callback, no more functions are run, and `callback` is
- * immediately called with the value of the error. Otherwise, `callback`
- * receives an array of results when `tasks` have completed.
- *
- * It is also possible to use an object instead of an array. Each property will
- * be run as a function, and the results will be passed to the final `callback`
- * as an object instead of an array. This can be a more readable way of handling
- *  results from {@link async.series}.
- *
- * **Note** that while many implementations preserve the order of object
- * properties, the [ECMAScript Language Specification](http://www.ecma-international.org/ecma-262/5.1/#sec-8.6)
- * explicitly states that
- *
- * > The mechanics and order of enumerating the properties is not specified.
- *
- * So if you rely on the order in which your series of functions are executed,
- * and want this to work on all platforms, consider using an array.
- *
- * @name series
- * @static
- * @memberOf module:ControlFlow
- * @method
- * @category Control Flow
- * @param {Array|Iterable|Object} tasks - A collection containing
- * [async functions]{@link AsyncFunction} to run in series.
- * Each function can complete with any number of optional `result` values.
- * @param {Function} [callback] - An optional callback to run once all the
- * functions have completed. This function gets a results array (or object)
- * containing all the result arguments passed to the `task` callbacks. Invoked
- * with (err, result).
- * @example
- * async.series([
- *     function(callback) {
- *         // do some stuff ...
- *         callback(null, 'one');
- *     },
- *     function(callback) {
- *         // do some more stuff ...
- *         callback(null, 'two');
- *     }
- * ],
- * // optional callback
- * function(err, results) {
- *     // results is now equal to ['one', 'two']
- * });
- *
- * async.series({
- *     one: function(callback) {
- *         setTimeout(function() {
- *             callback(null, 1);
- *         }, 200);
- *     },
- *     two: function(callback){
- *         setTimeout(function() {
- *             callback(null, 2);
- *         }, 100);
- *     }
- * }, function(err, results) {
- *     // results is now equal to: {one: 1, two: 2}
- * });
- */
-function series(tasks, callback) {
-  (0, _parallel2.default)(_eachOfSeries2.default, tasks, callback);
+  for (i = 0; i < exports.instances.length; i++) {
+    var instance = exports.instances[i];
+    instance.enabled = exports.enabled(instance.namespace);
+  }
 }
-module.exports = exports['default'];
-},{"./eachOfSeries":200,"./internal/parallel":213}],222:[function(require,module,exports){
-arguments[4][186][0].apply(exports,arguments)
-},{"./internal/setImmediate":215,"dup":186}],223:[function(require,module,exports){
-arguments[4][90][0].apply(exports,arguments)
-},{"./internal/once":211,"./internal/onlyOnce":212,"./internal/slice":216,"./internal/wrapAsync":218,"dup":90,"lodash/isArray":753,"lodash/noop":762}],224:[function(require,module,exports){
+
+/**
+ * Disable debug output.
+ *
+ * @api public
+ */
+
+function disable() {
+  exports.enable('');
+}
+
+/**
+ * Returns true if the given mode name is enabled, false otherwise.
+ *
+ * @param {String} name
+ * @return {Boolean}
+ * @api public
+ */
+
+function enabled(name) {
+  if (name[name.length - 1] === '*') {
+    return true;
+  }
+  var i, len;
+  for (i = 0, len = exports.skips.length; i < len; i++) {
+    if (exports.skips[i].test(name)) {
+      return false;
+    }
+  }
+  for (i = 0, len = exports.names.length; i < len; i++) {
+    if (exports.names[i].test(name)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Coerce `val`.
+ *
+ * @param {Mixed} val
+ * @return {Mixed}
+ * @api private
+ */
+
+function coerce(val) {
+  if (val instanceof Error) return val.stack || val.message;
+  return val;
+}
+
+},{"ms":514}],210:[function(require,module,exports){
 'use strict'
 
 const SECOND = 1000
@@ -33007,7 +33674,7 @@ module.exports = {
   maxListeners: 1000
 }
 
-},{}],225:[function(require,module,exports){
+},{}],211:[function(require,module,exports){
 'use strict'
 
 const each = require('async/each')
@@ -33294,7 +33961,7 @@ class DecisionEngine {
 
 module.exports = DecisionEngine
 
-},{"../types/message":231,"../types/wantlist":234,"../utils":235,"./ledger":226,"async/each":196,"async/eachSeries":201,"async/map":219,"async/setImmediate":222,"async/waterfall":223,"lodash.debounce":711,"lodash.find":713,"lodash.groupby":715,"lodash.pullallwith":721,"lodash.uniqwith":726,"lodash.values":727}],226:[function(require,module,exports){
+},{"../types/message":217,"../types/wantlist":220,"../utils":221,"./ledger":212,"async/each":21,"async/eachSeries":26,"async/map":49,"async/setImmediate":54,"async/waterfall":57,"lodash.debounce":453,"lodash.find":455,"lodash.groupby":457,"lodash.pullallwith":463,"lodash.uniqwith":468,"lodash.values":469}],212:[function(require,module,exports){
 'use strict'
 
 const Wantlist = require('../types/wantlist')
@@ -33340,7 +34007,7 @@ class Ledger {
 
 module.exports = Ledger
 
-},{"../types/wantlist":234}],227:[function(require,module,exports){
+},{"../types/wantlist":220}],213:[function(require,module,exports){
 'use strict'
 
 const waterfall = require('async/waterfall')
@@ -33726,7 +34393,7 @@ class Bitswap {
 
 module.exports = Bitswap
 
-},{"./decision-engine":225,"./network":228,"./notifications":229,"./utils":235,"./want-manager":236,"async/each":196,"async/map":219,"async/reject":220,"async/series":221,"async/waterfall":223,"once":837}],228:[function(require,module,exports){
+},{"./decision-engine":211,"./network":214,"./notifications":215,"./utils":221,"./want-manager":222,"async/each":21,"async/map":49,"async/reject":52,"async/series":53,"async/waterfall":57,"once":554}],214:[function(require,module,exports){
 'use strict'
 
 const lp = require('pull-length-prefixed')
@@ -33918,7 +34585,7 @@ function writeMessage (conn, msg, callback) {
 
 module.exports = Network
 
-},{"./constants":224,"./types/message":231,"./utils":235,"async/each":196,"async/setImmediate":222,"async/waterfall":223,"pull-length-prefixed":881,"pull-stream":892}],229:[function(require,module,exports){
+},{"./constants":210,"./types/message":217,"./utils":221,"async/each":21,"async/setImmediate":54,"async/waterfall":57,"pull-length-prefixed":589,"pull-stream":600}],215:[function(require,module,exports){
 'use strict'
 
 const EventEmitter = require('events').EventEmitter
@@ -34034,7 +34701,7 @@ class Notifications extends EventEmitter {
 
 module.exports = Notifications
 
-},{"./constants":224,"./utils":235,"events":1015}],230:[function(require,module,exports){
+},{"./constants":210,"./utils":221,"events":720}],216:[function(require,module,exports){
 'use strict'
 
 const WantlistEntry = require('../wantlist').Entry
@@ -34076,7 +34743,7 @@ module.exports = class BitswapMessageEntry {
   }
 }
 
-},{"../wantlist":234,"assert":1010,"cids":61}],231:[function(require,module,exports){
+},{"../wantlist":220,"assert":715,"cids":102}],217:[function(require,module,exports){
 'use strict'
 
 const protons = require('protons')
@@ -34287,7 +34954,7 @@ BitswapMessage.deserialize = (raw, callback) => {
 BitswapMessage.Entry = Entry
 module.exports = BitswapMessage
 
-},{"./entry":230,"./message.proto":232,"assert":1010,"async/each":196,"cids":61,"ipfs-block":240,"lodash.isequalwith":718,"multicodec/src/name-table":783,"multihashing-async":794,"protons":867,"varint-decoder":1000}],232:[function(require,module,exports){
+},{"./entry":216,"./message.proto":218,"assert":715,"async/each":21,"cids":102,"ipfs-block":226,"lodash.isequalwith":460,"multicodec/src/name-table":525,"multihashing-async":533,"protons":575,"varint-decoder":705}],218:[function(require,module,exports){
 'use strict'
 
 // from: https://github.com/ipfs/go-ipfs/blob/master/exchange/bitswap/message/pb/message.proto
@@ -34317,7 +34984,7 @@ module.exports = `
   }
 `
 
-},{}],233:[function(require,module,exports){
+},{}],219:[function(require,module,exports){
 'use strict'
 
 const assert = require('assert')
@@ -34361,7 +35028,7 @@ class WantListEntry {
 
 module.exports = WantListEntry
 
-},{"assert":1010,"cids":61}],234:[function(require,module,exports){
+},{"assert":715,"cids":102}],220:[function(require,module,exports){
 'use strict'
 
 const sort = require('lodash.sortby')
@@ -34437,7 +35104,7 @@ class Wantlist {
 Wantlist.Entry = Entry
 module.exports = Wantlist
 
-},{"./entry":233,"lodash.sortby":723}],235:[function(require,module,exports){
+},{"./entry":219,"lodash.sortby":465}],221:[function(require,module,exports){
 'use strict'
 
 const debug = require('debug')
@@ -34465,7 +35132,7 @@ exports.logger = (id, subsystem) => {
   return logger
 }
 
-},{"debug":101}],236:[function(require,module,exports){
+},{"debug":208}],222:[function(require,module,exports){
 'use strict'
 
 const setImmediate = require('async/setImmediate')
@@ -34603,7 +35270,7 @@ module.exports = class WantManager {
   }
 }
 
-},{"../constants":224,"../types/message":231,"../types/wantlist":234,"../utils":235,"./msg-queue":237,"async/setImmediate":222}],237:[function(require,module,exports){
+},{"../constants":210,"../types/message":217,"../types/wantlist":220,"../utils":221,"./msg-queue":223,"async/setImmediate":54}],223:[function(require,module,exports){
 'use strict'
 
 const debounce = require('lodash.debounce')
@@ -34669,7 +35336,7 @@ module.exports = class MsgQueue {
   }
 }
 
-},{"../types/message":231,"../utils":235,"lodash.debounce":711}],238:[function(require,module,exports){
+},{"../types/message":217,"../utils":221,"lodash.debounce":453}],224:[function(require,module,exports){
 'use strict'
 
 /**
@@ -34780,7 +35447,7 @@ class BlockService {
 
 module.exports = BlockService
 
-},{}],239:[function(require,module,exports){
+},{}],225:[function(require,module,exports){
 (function (Buffer){
 'use strict'
 
@@ -34921,7 +35588,7 @@ CID.isCID = (other) => {
 module.exports = CID
 
 }).call(this,require("buffer").Buffer)
-},{"buffer":1013,"multibase":780,"multicodec":782,"multicodec/src/base-table":781,"multicodec/src/varint-table":785,"multihashes":787}],240:[function(require,module,exports){
+},{"buffer":718,"multibase":522,"multicodec":524,"multicodec/src/base-table":523,"multicodec/src/varint-table":527,"multihashes":529}],226:[function(require,module,exports){
 (function (Buffer){
 'use strict'
 
@@ -34990,479 +35657,8 @@ class Block {
 
 module.exports = Block
 
-}).call(this,{"isBuffer":require("../../../../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js")})
-},{"../../../../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js":1019,"cids":239}],241:[function(require,module,exports){
-arguments[4][72][0].apply(exports,arguments)
-},{"./internal/initialParams":253,"./internal/setImmediate":260,"dup":72,"lodash/isObject":758}],242:[function(require,module,exports){
-arguments[4][73][0].apply(exports,arguments)
-},{"./eachOf":243,"./internal/withoutIndex":262,"./internal/wrapAsync":263,"dup":73}],243:[function(require,module,exports){
-arguments[4][74][0].apply(exports,arguments)
-},{"./eachOfLimit":244,"./internal/breakLoop":247,"./internal/doLimit":248,"./internal/once":255,"./internal/onlyOnce":256,"./internal/wrapAsync":263,"dup":74,"lodash/isArrayLike":754,"lodash/noop":762}],244:[function(require,module,exports){
-arguments[4][75][0].apply(exports,arguments)
-},{"./internal/eachOfLimit":250,"./internal/wrapAsync":263,"dup":75}],245:[function(require,module,exports){
-arguments[4][200][0].apply(exports,arguments)
-},{"./eachOfLimit":244,"./internal/doLimit":248,"dup":200}],246:[function(require,module,exports){
-"use strict";
-
-Object.defineProperty(exports, "__esModule", {
-    value: true
-});
-exports.default = DLL;
-// Simple doubly linked list (https://en.wikipedia.org/wiki/Doubly_linked_list) implementation
-// used for queues. This implementation assumes that the node provided by the user can be modified
-// to adjust the next and last properties. We implement only the minimal functionality
-// for queue support.
-function DLL() {
-    this.head = this.tail = null;
-    this.length = 0;
-}
-
-function setInitial(dll, node) {
-    dll.length = 1;
-    dll.head = dll.tail = node;
-}
-
-DLL.prototype.removeLink = function (node) {
-    if (node.prev) node.prev.next = node.next;else this.head = node.next;
-    if (node.next) node.next.prev = node.prev;else this.tail = node.prev;
-
-    node.prev = node.next = null;
-    this.length -= 1;
-    return node;
-};
-
-DLL.prototype.empty = function () {
-    while (this.head) this.shift();
-    return this;
-};
-
-DLL.prototype.insertAfter = function (node, newNode) {
-    newNode.prev = node;
-    newNode.next = node.next;
-    if (node.next) node.next.prev = newNode;else this.tail = newNode;
-    node.next = newNode;
-    this.length += 1;
-};
-
-DLL.prototype.insertBefore = function (node, newNode) {
-    newNode.prev = node.prev;
-    newNode.next = node;
-    if (node.prev) node.prev.next = newNode;else this.head = newNode;
-    node.prev = newNode;
-    this.length += 1;
-};
-
-DLL.prototype.unshift = function (node) {
-    if (this.head) this.insertBefore(this.head, node);else setInitial(this, node);
-};
-
-DLL.prototype.push = function (node) {
-    if (this.tail) this.insertAfter(this.tail, node);else setInitial(this, node);
-};
-
-DLL.prototype.shift = function () {
-    return this.head && this.removeLink(this.head);
-};
-
-DLL.prototype.pop = function () {
-    return this.tail && this.removeLink(this.tail);
-};
-
-DLL.prototype.toArray = function () {
-    var arr = Array(this.length);
-    var curr = this.head;
-    for (var idx = 0; idx < this.length; idx++) {
-        arr[idx] = curr.data;
-        curr = curr.next;
-    }
-    return arr;
-};
-
-DLL.prototype.remove = function (testFn) {
-    var curr = this.head;
-    while (!!curr) {
-        var next = curr.next;
-        if (testFn(curr)) {
-            this.removeLink(curr);
-        }
-        curr = next;
-    }
-    return this;
-};
-module.exports = exports["default"];
-},{}],247:[function(require,module,exports){
-arguments[4][76][0].apply(exports,arguments)
-},{"dup":76}],248:[function(require,module,exports){
-arguments[4][77][0].apply(exports,arguments)
-},{"dup":77}],249:[function(require,module,exports){
-arguments[4][204][0].apply(exports,arguments)
-},{"../eachOf":243,"./wrapAsync":263,"dup":204}],250:[function(require,module,exports){
-arguments[4][78][0].apply(exports,arguments)
-},{"./breakLoop":247,"./iterator":254,"./once":255,"./onlyOnce":256,"dup":78,"lodash/noop":762}],251:[function(require,module,exports){
-arguments[4][206][0].apply(exports,arguments)
-},{"./wrapAsync":263,"dup":206,"lodash/_arrayMap":730,"lodash/_baseProperty":738,"lodash/isArrayLike":754,"lodash/noop":762}],252:[function(require,module,exports){
-arguments[4][79][0].apply(exports,arguments)
-},{"dup":79}],253:[function(require,module,exports){
-arguments[4][80][0].apply(exports,arguments)
-},{"./slice":261,"dup":80}],254:[function(require,module,exports){
-arguments[4][81][0].apply(exports,arguments)
-},{"./getIterator":252,"dup":81,"lodash/isArrayLike":754,"lodash/keys":761}],255:[function(require,module,exports){
-arguments[4][82][0].apply(exports,arguments)
-},{"dup":82}],256:[function(require,module,exports){
-arguments[4][83][0].apply(exports,arguments)
-},{"dup":83}],257:[function(require,module,exports){
-arguments[4][84][0].apply(exports,arguments)
-},{"./slice":261,"./wrapAsync":263,"dup":84,"lodash/isArrayLike":754,"lodash/noop":762}],258:[function(require,module,exports){
-'use strict';
-
-Object.defineProperty(exports, "__esModule", {
-    value: true
-});
-exports.default = queue;
-
-var _baseIndexOf = require('lodash/_baseIndexOf');
-
-var _baseIndexOf2 = _interopRequireDefault(_baseIndexOf);
-
-var _isArray = require('lodash/isArray');
-
-var _isArray2 = _interopRequireDefault(_isArray);
-
-var _noop = require('lodash/noop');
-
-var _noop2 = _interopRequireDefault(_noop);
-
-var _onlyOnce = require('./onlyOnce');
-
-var _onlyOnce2 = _interopRequireDefault(_onlyOnce);
-
-var _setImmediate = require('./setImmediate');
-
-var _setImmediate2 = _interopRequireDefault(_setImmediate);
-
-var _DoublyLinkedList = require('./DoublyLinkedList');
-
-var _DoublyLinkedList2 = _interopRequireDefault(_DoublyLinkedList);
-
-var _wrapAsync = require('./wrapAsync');
-
-var _wrapAsync2 = _interopRequireDefault(_wrapAsync);
-
-function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
-
-function queue(worker, concurrency, payload) {
-    if (concurrency == null) {
-        concurrency = 1;
-    } else if (concurrency === 0) {
-        throw new Error('Concurrency must not be zero');
-    }
-
-    var _worker = (0, _wrapAsync2.default)(worker);
-    var numRunning = 0;
-    var workersList = [];
-
-    function _insert(data, insertAtFront, callback) {
-        if (callback != null && typeof callback !== 'function') {
-            throw new Error('task callback must be a function');
-        }
-        q.started = true;
-        if (!(0, _isArray2.default)(data)) {
-            data = [data];
-        }
-        if (data.length === 0 && q.idle()) {
-            // call drain immediately if there are no tasks
-            return (0, _setImmediate2.default)(function () {
-                q.drain();
-            });
-        }
-
-        for (var i = 0, l = data.length; i < l; i++) {
-            var item = {
-                data: data[i],
-                callback: callback || _noop2.default
-            };
-
-            if (insertAtFront) {
-                q._tasks.unshift(item);
-            } else {
-                q._tasks.push(item);
-            }
-        }
-        (0, _setImmediate2.default)(q.process);
-    }
-
-    function _next(tasks) {
-        return function (err) {
-            numRunning -= 1;
-
-            for (var i = 0, l = tasks.length; i < l; i++) {
-                var task = tasks[i];
-
-                var index = (0, _baseIndexOf2.default)(workersList, task, 0);
-                if (index >= 0) {
-                    workersList.splice(index, 1);
-                }
-
-                task.callback.apply(task, arguments);
-
-                if (err != null) {
-                    q.error(err, task.data);
-                }
-            }
-
-            if (numRunning <= q.concurrency - q.buffer) {
-                q.unsaturated();
-            }
-
-            if (q.idle()) {
-                q.drain();
-            }
-            q.process();
-        };
-    }
-
-    var isProcessing = false;
-    var q = {
-        _tasks: new _DoublyLinkedList2.default(),
-        concurrency: concurrency,
-        payload: payload,
-        saturated: _noop2.default,
-        unsaturated: _noop2.default,
-        buffer: concurrency / 4,
-        empty: _noop2.default,
-        drain: _noop2.default,
-        error: _noop2.default,
-        started: false,
-        paused: false,
-        push: function (data, callback) {
-            _insert(data, false, callback);
-        },
-        kill: function () {
-            q.drain = _noop2.default;
-            q._tasks.empty();
-        },
-        unshift: function (data, callback) {
-            _insert(data, true, callback);
-        },
-        remove: function (testFn) {
-            q._tasks.remove(testFn);
-        },
-        process: function () {
-            // Avoid trying to start too many processing operations. This can occur
-            // when callbacks resolve synchronously (#1267).
-            if (isProcessing) {
-                return;
-            }
-            isProcessing = true;
-            while (!q.paused && numRunning < q.concurrency && q._tasks.length) {
-                var tasks = [],
-                    data = [];
-                var l = q._tasks.length;
-                if (q.payload) l = Math.min(l, q.payload);
-                for (var i = 0; i < l; i++) {
-                    var node = q._tasks.shift();
-                    tasks.push(node);
-                    workersList.push(node);
-                    data.push(node.data);
-                }
-
-                numRunning += 1;
-
-                if (q._tasks.length === 0) {
-                    q.empty();
-                }
-
-                if (numRunning === q.concurrency) {
-                    q.saturated();
-                }
-
-                var cb = (0, _onlyOnce2.default)(_next(tasks));
-                _worker(data, cb);
-            }
-            isProcessing = false;
-        },
-        length: function () {
-            return q._tasks.length;
-        },
-        running: function () {
-            return numRunning;
-        },
-        workersList: function () {
-            return workersList;
-        },
-        idle: function () {
-            return q._tasks.length + numRunning === 0;
-        },
-        pause: function () {
-            q.paused = true;
-        },
-        resume: function () {
-            if (q.paused === false) {
-                return;
-            }
-            q.paused = false;
-            (0, _setImmediate2.default)(q.process);
-        }
-    };
-    return q;
-}
-module.exports = exports['default'];
-},{"./DoublyLinkedList":246,"./onlyOnce":256,"./setImmediate":260,"./wrapAsync":263,"lodash/_baseIndexOf":733,"lodash/isArray":753,"lodash/noop":762}],259:[function(require,module,exports){
-arguments[4][214][0].apply(exports,arguments)
-},{"./filter":251,"dup":214}],260:[function(require,module,exports){
-arguments[4][85][0].apply(exports,arguments)
-},{"./slice":261,"_process":1024,"dup":85}],261:[function(require,module,exports){
-arguments[4][86][0].apply(exports,arguments)
-},{"dup":86}],262:[function(require,module,exports){
-arguments[4][87][0].apply(exports,arguments)
-},{"dup":87}],263:[function(require,module,exports){
-arguments[4][88][0].apply(exports,arguments)
-},{"../asyncify":241,"dup":88}],264:[function(require,module,exports){
-arguments[4][89][0].apply(exports,arguments)
-},{"./eachOf":243,"./internal/parallel":257,"dup":89}],265:[function(require,module,exports){
-'use strict';
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-
-exports.default = function (worker, concurrency) {
-  var _worker = (0, _wrapAsync2.default)(worker);
-  return (0, _queue2.default)(function (items, cb) {
-    _worker(items[0], cb);
-  }, concurrency, 1);
-};
-
-var _queue = require('./internal/queue');
-
-var _queue2 = _interopRequireDefault(_queue);
-
-var _wrapAsync = require('./internal/wrapAsync');
-
-var _wrapAsync2 = _interopRequireDefault(_wrapAsync);
-
-function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
-
-module.exports = exports['default'];
-
-/**
- * A queue of tasks for the worker function to complete.
- * @typedef {Object} QueueObject
- * @memberOf module:ControlFlow
- * @property {Function} length - a function returning the number of items
- * waiting to be processed. Invoke with `queue.length()`.
- * @property {boolean} started - a boolean indicating whether or not any
- * items have been pushed and processed by the queue.
- * @property {Function} running - a function returning the number of items
- * currently being processed. Invoke with `queue.running()`.
- * @property {Function} workersList - a function returning the array of items
- * currently being processed. Invoke with `queue.workersList()`.
- * @property {Function} idle - a function returning false if there are items
- * waiting or being processed, or true if not. Invoke with `queue.idle()`.
- * @property {number} concurrency - an integer for determining how many `worker`
- * functions should be run in parallel. This property can be changed after a
- * `queue` is created to alter the concurrency on-the-fly.
- * @property {Function} push - add a new task to the `queue`. Calls `callback`
- * once the `worker` has finished processing the task. Instead of a single task,
- * a `tasks` array can be submitted. The respective callback is used for every
- * task in the list. Invoke with `queue.push(task, [callback])`,
- * @property {Function} unshift - add a new task to the front of the `queue`.
- * Invoke with `queue.unshift(task, [callback])`.
- * @property {Function} remove - remove items from the queue that match a test
- * function.  The test function will be passed an object with a `data` property,
- * and a `priority` property, if this is a
- * [priorityQueue]{@link module:ControlFlow.priorityQueue} object.
- * Invoked with `queue.remove(testFn)`, where `testFn` is of the form
- * `function ({data, priority}) {}` and returns a Boolean.
- * @property {Function} saturated - a callback that is called when the number of
- * running workers hits the `concurrency` limit, and further tasks will be
- * queued.
- * @property {Function} unsaturated - a callback that is called when the number
- * of running workers is less than the `concurrency` & `buffer` limits, and
- * further tasks will not be queued.
- * @property {number} buffer - A minimum threshold buffer in order to say that
- * the `queue` is `unsaturated`.
- * @property {Function} empty - a callback that is called when the last item
- * from the `queue` is given to a `worker`.
- * @property {Function} drain - a callback that is called when the last item
- * from the `queue` has returned from the `worker`.
- * @property {Function} error - a callback that is called when a task errors.
- * Has the signature `function(error, task)`.
- * @property {boolean} paused - a boolean for determining whether the queue is
- * in a paused state.
- * @property {Function} pause - a function that pauses the processing of tasks
- * until `resume()` is called. Invoke with `queue.pause()`.
- * @property {Function} resume - a function that resumes the processing of
- * queued tasks when the queue is paused. Invoke with `queue.resume()`.
- * @property {Function} kill - a function that removes the `drain` callback and
- * empties remaining tasks from the queue forcing it to go idle. No more tasks
- * should be pushed to the queue after calling this function. Invoke with `queue.kill()`.
- */
-
-/**
- * Creates a `queue` object with the specified `concurrency`. Tasks added to the
- * `queue` are processed in parallel (up to the `concurrency` limit). If all
- * `worker`s are in progress, the task is queued until one becomes available.
- * Once a `worker` completes a `task`, that `task`'s callback is called.
- *
- * @name queue
- * @static
- * @memberOf module:ControlFlow
- * @method
- * @category Control Flow
- * @param {AsyncFunction} worker - An async function for processing a queued task.
- * If you want to handle errors from an individual task, pass a callback to
- * `q.push()`. Invoked with (task, callback).
- * @param {number} [concurrency=1] - An `integer` for determining how many
- * `worker` functions should be run in parallel.  If omitted, the concurrency
- * defaults to `1`.  If the concurrency is `0`, an error is thrown.
- * @returns {module:ControlFlow.QueueObject} A queue object to manage the tasks. Callbacks can
- * attached as certain properties to listen for specific events during the
- * lifecycle of the queue.
- * @example
- *
- * // create a queue object with concurrency 2
- * var q = async.queue(function(task, callback) {
- *     console.log('hello ' + task.name);
- *     callback();
- * }, 2);
- *
- * // assign a callback
- * q.drain = function() {
- *     console.log('all items have been processed');
- * };
- *
- * // add some items to the queue
- * q.push({name: 'foo'}, function(err) {
- *     console.log('finished processing foo');
- * });
- * q.push({name: 'bar'}, function (err) {
- *     console.log('finished processing bar');
- * });
- *
- * // add some items to the queue (batch-wise)
- * q.push([{name: 'baz'},{name: 'bay'},{name: 'bax'}], function(err) {
- *     console.log('finished processing item');
- * });
- *
- * // add some items to the front of the queue
- * q.unshift({name: 'bar'}, function (err) {
- *     console.log('finished processing bar');
- * });
- */
-},{"./internal/queue":258,"./internal/wrapAsync":263}],266:[function(require,module,exports){
-arguments[4][220][0].apply(exports,arguments)
-},{"./internal/doParallel":249,"./internal/reject":259,"dup":220}],267:[function(require,module,exports){
-arguments[4][221][0].apply(exports,arguments)
-},{"./eachOfSeries":245,"./internal/parallel":257,"dup":221}],268:[function(require,module,exports){
-arguments[4][186][0].apply(exports,arguments)
-},{"./internal/setImmediate":260,"dup":186}],269:[function(require,module,exports){
-arguments[4][90][0].apply(exports,arguments)
-},{"./internal/once":255,"./internal/onlyOnce":256,"./internal/slice":261,"./internal/wrapAsync":263,"dup":90,"lodash/isArray":753,"lodash/noop":762}],270:[function(require,module,exports){
-arguments[4][141][0].apply(exports,arguments)
-},{"./debug":271,"_process":1024,"dup":141}],271:[function(require,module,exports){
-arguments[4][142][0].apply(exports,arguments)
-},{"dup":142,"ms":772}],272:[function(require,module,exports){
+}).call(this,{"isBuffer":require("../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js")})
+},{"../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js":724,"cids":225}],227:[function(require,module,exports){
 'use strict'
 
 const Key = require('interface-datastore').Key
@@ -35503,7 +35699,7 @@ module.exports = (store) => {
   }
 }
 
-},{"interface-datastore":190,"safe-buffer":948}],273:[function(require,module,exports){
+},{"interface-datastore":203,"safe-buffer":656}],228:[function(require,module,exports){
 'use strict'
 
 exports.create = function createBackend (name, path, options) {
@@ -35512,7 +35708,7 @@ exports.create = function createBackend (name, path, options) {
   return new Ctor(path, backendOptions)
 }
 
-},{}],274:[function(require,module,exports){
+},{}],229:[function(require,module,exports){
 'use strict'
 
 const core = require('datastore-core')
@@ -35666,7 +35862,7 @@ function createBaseStore (store) {
   }
 }
 
-},{"async/reject":266,"async/setImmediate":268,"base32.js":20,"cids":61,"datastore-core":92,"interface-datastore":190,"ipfs-block":240}],275:[function(require,module,exports){
+},{"async/reject":52,"async/setImmediate":54,"base32.js":61,"cids":102,"datastore-core":113,"interface-datastore":203,"ipfs-block":226}],230:[function(require,module,exports){
 'use strict'
 
 const Key = require('interface-datastore').Key
@@ -35776,7 +35972,7 @@ module.exports = (store) => {
   }
 }
 
-},{"async/queue":265,"async/waterfall":269,"interface-datastore":190,"lodash.get":714,"lodash.has":716,"lodash.set":722,"safe-buffer":948}],276:[function(require,module,exports){
+},{"async/queue":51,"async/waterfall":57,"interface-datastore":203,"lodash.get":456,"lodash.has":458,"lodash.set":464,"safe-buffer":656}],231:[function(require,module,exports){
 'use strict'
 
 // Default configuration for a repo in the browser
@@ -35802,7 +35998,7 @@ module.exports = {
   }
 }
 
-},{"datastore-level":100,"level-js":525}],277:[function(require,module,exports){
+},{"datastore-level":121,"level-js":362}],232:[function(require,module,exports){
 'use strict'
 
 const waterfall = require('async/waterfall')
@@ -36032,7 +36228,7 @@ function buildOptions (_options) {
   return options
 }
 
-},{"./api-addr":272,"./backends":273,"./blockstore":274,"./config":275,"./default-options":276,"./lock":278,"./lock-memory":278,"./version":279,"assert":1010,"async/each":242,"async/parallel":264,"async/series":267,"async/waterfall":269,"debug":270,"path":1022}],278:[function(require,module,exports){
+},{"./api-addr":227,"./backends":228,"./blockstore":229,"./config":230,"./default-options":231,"./lock":233,"./lock-memory":233,"./version":234,"assert":715,"async/each":21,"async/parallel":50,"async/series":53,"async/waterfall":57,"debug":122,"path":727}],233:[function(require,module,exports){
 'use strict'
 
 const debug = require('debug')
@@ -36085,7 +36281,7 @@ exports.locked = (dir, callback) => {
   })
 }
 
-},{"async/setImmediate":268,"debug":270}],279:[function(require,module,exports){
+},{"async/setImmediate":54,"debug":122}],234:[function(require,module,exports){
 (function (Buffer){
 'use strict'
 
@@ -36152,67 +36348,9 @@ module.exports = (store) => {
 }
 
 }).call(this,require("buffer").Buffer)
-},{"buffer":1013,"debug":270,"interface-datastore":190}],280:[function(require,module,exports){
-arguments[4][72][0].apply(exports,arguments)
-},{"./internal/initialParams":292,"./internal/setImmediate":299,"dup":72,"lodash/isObject":758}],281:[function(require,module,exports){
-arguments[4][197][0].apply(exports,arguments)
-},{"./internal/eachOfLimit":290,"./internal/withoutIndex":301,"./internal/wrapAsync":302,"dup":197}],282:[function(require,module,exports){
-arguments[4][74][0].apply(exports,arguments)
-},{"./eachOfLimit":283,"./internal/breakLoop":287,"./internal/doLimit":288,"./internal/once":295,"./internal/onlyOnce":296,"./internal/wrapAsync":302,"dup":74,"lodash/isArrayLike":754,"lodash/noop":762}],283:[function(require,module,exports){
-arguments[4][75][0].apply(exports,arguments)
-},{"./internal/eachOfLimit":290,"./internal/wrapAsync":302,"dup":75}],284:[function(require,module,exports){
-arguments[4][200][0].apply(exports,arguments)
-},{"./eachOfLimit":283,"./internal/doLimit":288,"dup":200}],285:[function(require,module,exports){
-arguments[4][201][0].apply(exports,arguments)
-},{"./eachLimit":281,"./internal/doLimit":288,"dup":201}],286:[function(require,module,exports){
-arguments[4][246][0].apply(exports,arguments)
-},{"dup":246}],287:[function(require,module,exports){
-arguments[4][76][0].apply(exports,arguments)
-},{"dup":76}],288:[function(require,module,exports){
-arguments[4][77][0].apply(exports,arguments)
-},{"dup":77}],289:[function(require,module,exports){
-arguments[4][204][0].apply(exports,arguments)
-},{"../eachOf":282,"./wrapAsync":302,"dup":204}],290:[function(require,module,exports){
-arguments[4][78][0].apply(exports,arguments)
-},{"./breakLoop":287,"./iterator":293,"./once":295,"./onlyOnce":296,"dup":78,"lodash/noop":762}],291:[function(require,module,exports){
-arguments[4][79][0].apply(exports,arguments)
-},{"dup":79}],292:[function(require,module,exports){
-arguments[4][80][0].apply(exports,arguments)
-},{"./slice":300,"dup":80}],293:[function(require,module,exports){
-arguments[4][81][0].apply(exports,arguments)
-},{"./getIterator":291,"dup":81,"lodash/isArrayLike":754,"lodash/keys":761}],294:[function(require,module,exports){
-arguments[4][210][0].apply(exports,arguments)
-},{"./wrapAsync":302,"dup":210,"lodash/noop":762}],295:[function(require,module,exports){
-arguments[4][82][0].apply(exports,arguments)
-},{"dup":82}],296:[function(require,module,exports){
-arguments[4][83][0].apply(exports,arguments)
-},{"dup":83}],297:[function(require,module,exports){
-arguments[4][84][0].apply(exports,arguments)
-},{"./slice":300,"./wrapAsync":302,"dup":84,"lodash/isArrayLike":754,"lodash/noop":762}],298:[function(require,module,exports){
-arguments[4][258][0].apply(exports,arguments)
-},{"./DoublyLinkedList":286,"./onlyOnce":296,"./setImmediate":299,"./wrapAsync":302,"dup":258,"lodash/_baseIndexOf":733,"lodash/isArray":753,"lodash/noop":762}],299:[function(require,module,exports){
-arguments[4][85][0].apply(exports,arguments)
-},{"./slice":300,"_process":1024,"dup":85}],300:[function(require,module,exports){
-arguments[4][86][0].apply(exports,arguments)
-},{"dup":86}],301:[function(require,module,exports){
-arguments[4][87][0].apply(exports,arguments)
-},{"dup":87}],302:[function(require,module,exports){
-arguments[4][88][0].apply(exports,arguments)
-},{"../asyncify":280,"dup":88}],303:[function(require,module,exports){
-arguments[4][219][0].apply(exports,arguments)
-},{"./internal/doParallel":289,"./internal/map":294,"dup":219}],304:[function(require,module,exports){
-arguments[4][89][0].apply(exports,arguments)
-},{"./eachOf":282,"./internal/parallel":297,"dup":89}],305:[function(require,module,exports){
-arguments[4][265][0].apply(exports,arguments)
-},{"./internal/queue":298,"./internal/wrapAsync":302,"dup":265}],306:[function(require,module,exports){
-arguments[4][186][0].apply(exports,arguments)
-},{"./internal/setImmediate":299,"dup":186}],307:[function(require,module,exports){
-arguments[4][90][0].apply(exports,arguments)
-},{"./internal/once":295,"./internal/onlyOnce":296,"./internal/slice":300,"./internal/wrapAsync":302,"dup":90,"lodash/isArray":753,"lodash/noop":762}],308:[function(require,module,exports){
-arguments[4][91][0].apply(exports,arguments)
-},{"./internal/onlyOnce":296,"./internal/slice":300,"./internal/wrapAsync":302,"dup":91,"lodash/noop":762}],309:[function(require,module,exports){
-arguments[4][103][0].apply(exports,arguments)
-},{"buffer":1013,"dup":103}],310:[function(require,module,exports){
+},{"buffer":718,"debug":122,"interface-datastore":203}],235:[function(require,module,exports){
+arguments[4][124][0].apply(exports,arguments)
+},{"buffer":718,"dup":124}],236:[function(require,module,exports){
 'use strict'
 
 const pull = require('pull-stream')
@@ -36271,7 +36409,7 @@ module.exports = function balancedReduceToRoot (reduce, options) {
   }
 }
 
-},{"pull-batch":869,"pull-pair":883,"pull-pushable":887,"pull-stream":892}],311:[function(require,module,exports){
+},{"pull-batch":577,"pull-pair":591,"pull-pushable":595,"pull-stream":600}],237:[function(require,module,exports){
 'use strict'
 
 const balancedReducer = require('./balanced-reducer')
@@ -36285,7 +36423,7 @@ module.exports = function (reduce, _options) {
   return balancedReducer(reduce, options)
 }
 
-},{"./balanced-reducer":310}],312:[function(require,module,exports){
+},{"./balanced-reducer":236}],238:[function(require,module,exports){
 (function (Buffer){
 'use strict'
 
@@ -36452,7 +36590,7 @@ module.exports = function (createChunker, ipldResolver, createReducer, _options)
 }
 
 }).call(this,require("buffer").Buffer)
-},{"./reduce":316,"async/parallel":304,"async/waterfall":307,"buffer":1013,"cids":61,"deep-extend":309,"ipfs-unixfs":338,"ipld-dag-pb":424,"pull-stream":892,"pull-through":923}],313:[function(require,module,exports){
+},{"./reduce":242,"async/parallel":50,"async/waterfall":57,"buffer":718,"cids":102,"deep-extend":235,"ipfs-unixfs":264,"ipld-dag-pb":309,"pull-stream":600,"pull-through":631}],239:[function(require,module,exports){
 'use strict'
 
 const pullPushable = require('pull-pushable')
@@ -36474,7 +36612,7 @@ module.exports = function createBuildStream (createStrategy, ipldResolver, optio
   }
 }
 
-},{"pull-pushable":887,"pull-write":925}],314:[function(require,module,exports){
+},{"pull-pushable":595,"pull-write":633}],240:[function(require,module,exports){
 'use strict'
 
 const pull = require('pull-stream')
@@ -36513,7 +36651,7 @@ module.exports = function (reduce, options) {
   }
 }
 
-},{"pull-batch":869,"pull-pair":883,"pull-pushable":887,"pull-stream":892}],315:[function(require,module,exports){
+},{"pull-batch":577,"pull-pair":591,"pull-pushable":595,"pull-stream":600}],241:[function(require,module,exports){
 'use strict'
 
 const assert = require('assert')
@@ -36547,7 +36685,7 @@ module.exports = function (Chunker, ipldResolver, _options) {
   return createBuildStream(createStrategy, ipldResolver, options)
 }
 
-},{"./balanced":311,"./builder":312,"./create-build-stream":313,"./flat":314,"./trickle":317,"assert":1010}],316:[function(require,module,exports){
+},{"./balanced":237,"./builder":238,"./create-build-stream":239,"./flat":240,"./trickle":243,"assert":715}],242:[function(require,module,exports){
 'use strict'
 
 const waterfall = require('async/waterfall')
@@ -36613,7 +36751,7 @@ module.exports = function (file, ipldResolver, options) {
   }
 }
 
-},{"async/waterfall":307,"cids":61,"ipfs-unixfs":338,"ipld-dag-pb":424}],317:[function(require,module,exports){
+},{"async/waterfall":57,"cids":102,"ipfs-unixfs":264,"ipld-dag-pb":309}],243:[function(require,module,exports){
 'use strict'
 
 const trickleReducer = require('./trickle-reducer')
@@ -36628,7 +36766,7 @@ module.exports = function (reduce, _options) {
   return trickleReducer(reduce, options)
 }
 
-},{"./trickle-reducer":318}],318:[function(require,module,exports){
+},{"./trickle-reducer":244}],244:[function(require,module,exports){
 'use strict'
 
 const pull = require('pull-stream')
@@ -36775,7 +36913,7 @@ module.exports = function trickleReduceToRoot (reduce, options) {
   }
 }
 
-},{"pull-batch":869,"pull-pair":883,"pull-pause":886,"pull-pushable":887,"pull-stream":892,"pull-through":923,"pull-write":925}],319:[function(require,module,exports){
+},{"pull-batch":577,"pull-pair":591,"pull-pause":594,"pull-pushable":595,"pull-stream":600,"pull-through":631,"pull-write":633}],245:[function(require,module,exports){
 'use strict'
 
 const pullBlock = require('pull-block')
@@ -36785,7 +36923,7 @@ module.exports = (options) => {
   return pullBlock(maxSize, { zeroPadding: false, emitEmpty: true })
 }
 
-},{"pull-block":870}],320:[function(require,module,exports){
+},{"pull-block":578}],246:[function(require,module,exports){
 (function (Buffer){
 'use strict'
 
@@ -36799,8 +36937,8 @@ module.exports = (multihash) => {
   return multihash
 }
 
-}).call(this,{"isBuffer":require("../../../../../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js")})
-},{"../../../../../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js":1019,"multihashes":787}],321:[function(require,module,exports){
+}).call(this,{"isBuffer":require("../../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js")})
+},{"../../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js":724,"multihashes":529}],247:[function(require,module,exports){
 'use strict'
 
 const path = require('path')
@@ -36850,7 +36988,7 @@ function dirExporter (node, name, pathRest, ipldResolver, resolve, parent) {
   return cat(streams)
 }
 
-},{"cids":61,"path":1022,"pull-cat":871,"pull-paramap":884,"pull-stream":892}],322:[function(require,module,exports){
+},{"cids":102,"path":727,"pull-cat":579,"pull-paramap":592,"pull-stream":600}],248:[function(require,module,exports){
 'use strict'
 
 const path = require('path')
@@ -36924,7 +37062,7 @@ function shardedDirExporter (node, name, pathRest, ipldResolver, resolve, parent
   return cat(streams)
 }
 
-},{"./clean-multihash":320,"cids":61,"path":1022,"pull-cat":871,"pull-paramap":884,"pull-stream":892}],323:[function(require,module,exports){
+},{"./clean-multihash":246,"cids":102,"path":727,"pull-cat":579,"pull-paramap":592,"pull-stream":600}],249:[function(require,module,exports){
 (function (Buffer){
 'use strict'
 
@@ -36973,7 +37111,7 @@ module.exports = (node, name, pathRest, ipldResolver) => {
 }
 
 }).call(this,require("buffer").Buffer)
-},{"buffer":1013,"cids":61,"ipfs-unixfs":338,"pull-paramap":884,"pull-stream":892,"pull-traverse":924}],324:[function(require,module,exports){
+},{"buffer":718,"cids":102,"ipfs-unixfs":264,"pull-paramap":592,"pull-stream":600,"pull-traverse":632}],250:[function(require,module,exports){
 (function (Buffer){
 'use strict'
 
@@ -37039,8 +37177,8 @@ module.exports = (path, dag) => {
   )
 }
 
-}).call(this,{"isBuffer":require("../../../../../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js")})
-},{"../../../../../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js":1019,"./resolve":326,"cids":61,"pull-defer":874,"pull-stream":892}],325:[function(require,module,exports){
+}).call(this,{"isBuffer":require("../../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js")})
+},{"../../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js":724,"./resolve":252,"cids":102,"pull-defer":582,"pull-stream":600}],251:[function(require,module,exports){
 'use strict'
 
 const path = require('path')
@@ -37078,7 +37216,7 @@ function sanitizeCID (cid) {
   return new CID(cid.version, cid.codec, cid.multihash)
 }
 
-},{"cids":61,"path":1022,"pull-defer":874,"pull-stream":892}],326:[function(require,module,exports){
+},{"cids":102,"path":727,"pull-defer":582,"pull-stream":600}],252:[function(require,module,exports){
 (function (Buffer){
 'use strict'
 
@@ -37114,8 +37252,8 @@ function typeOf (node) {
   }
 }
 
-}).call(this,{"isBuffer":require("../../../../../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js")})
-},{"../../../../../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js":1019,"./dir-flat":321,"./dir-hamt-sharded":322,"./file":323,"./object":325,"ipfs-unixfs":338,"pull-stream":892}],327:[function(require,module,exports){
+}).call(this,{"isBuffer":require("../../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js")})
+},{"../../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js":724,"./dir-flat":247,"./dir-hamt-sharded":248,"./file":249,"./object":251,"ipfs-unixfs":264,"pull-stream":600}],253:[function(require,module,exports){
 (function (process){
 'use strict'
 
@@ -37408,7 +37546,7 @@ function asyncTransformBucket (bucket, asyncMap, asyncReduce, callback) {
 module.exports = Bucket
 
 }).call(this,require('_process'))
-},{"./consumable-hash":329,"_process":1024,"async/eachSeries":285,"async/map":303,"sparse-array":989}],328:[function(require,module,exports){
+},{"./consumable-hash":255,"_process":729,"async/eachSeries":26,"async/map":49,"sparse-array":691}],254:[function(require,module,exports){
 'use strict'
 
 const START_MASKS = [
@@ -37492,7 +37630,7 @@ function maskFor (start, length) {
   return START_MASKS[start] & STOP_MASKS[Math.min(length + start - 1, 7)]
 }
 
-},{}],329:[function(require,module,exports){
+},{}],255:[function(require,module,exports){
 (function (Buffer,process){
 'use strict'
 
@@ -37598,8 +37736,8 @@ class InfiniteHash {
   }
 }
 
-}).call(this,{"isBuffer":require("../../../../../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js")},require('_process'))
-},{"../../../../../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js":1019,"./consumable-buffer":328,"_process":1024,"async/whilst":308}],330:[function(require,module,exports){
+}).call(this,{"isBuffer":require("../../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js")},require('_process'))
+},{"../../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js":724,"./consumable-buffer":254,"_process":729,"async/whilst":58}],256:[function(require,module,exports){
 'use strict'
 
 const Bucket = require('./bucket')
@@ -37610,7 +37748,7 @@ module.exports = function createHAMT (options) {
 
 module.exports.isBucket = Bucket.isBucket
 
-},{"./bucket":327}],331:[function(require,module,exports){
+},{"./bucket":253}],257:[function(require,module,exports){
 (function (process){
 'use strict'
 
@@ -37709,7 +37847,7 @@ function createDirFlat (props, _options) {
 }
 
 }).call(this,require('_process'))
-},{"./dir":333,"_process":1024,"async/eachSeries":285,"async/waterfall":307,"cids":61,"ipfs-unixfs":338,"ipld-dag-pb":424}],332:[function(require,module,exports){
+},{"./dir":259,"_process":729,"async/eachSeries":26,"async/waterfall":57,"cids":102,"ipfs-unixfs":264,"ipld-dag-pb":309}],258:[function(require,module,exports){
 (function (Buffer){
 'use strict'
 
@@ -37886,7 +38024,7 @@ function flush (options, bucket, path, ipldResolver, source, callback) {
 }
 
 }).call(this,require("buffer").Buffer)
-},{"../hamt":330,"./dir":333,"async/waterfall":307,"async/whilst":308,"buffer":1013,"cids":61,"ipfs-unixfs":338,"ipld-dag-pb":424,"left-pad":512,"multihashing-async":794}],333:[function(require,module,exports){
+},{"../hamt":256,"./dir":259,"async/waterfall":57,"async/whilst":58,"buffer":718,"cids":102,"ipfs-unixfs":264,"ipld-dag-pb":309,"left-pad":349,"multihashing-async":533}],259:[function(require,module,exports){
 'use strict'
 
 module.exports = class Dir {
@@ -37896,7 +38034,7 @@ module.exports = class Dir {
   }
 }
 
-},{}],334:[function(require,module,exports){
+},{}],260:[function(require,module,exports){
 'use strict'
 
 const waterfall = require('async/waterfall')
@@ -37972,7 +38110,7 @@ function definitelyShardOne (oldDir, options, callback) {
   )
 }
 
-},{"./dir-sharded":332,"async/waterfall":307}],335:[function(require,module,exports){
+},{"./dir-sharded":258,"async/waterfall":57}],261:[function(require,module,exports){
 (function (process){
 'use strict'
 
@@ -38074,7 +38212,7 @@ module.exports = function (ipldResolver, _options) {
 }
 
 }).call(this,require('_process'))
-},{"../builder":315,"../chunker/fixed-size":319,"./tree-builder":336,"_process":1024,"assert":1010,"async/setImmediate":306,"pull-pause":886,"pull-pushable":887,"pull-stream":892,"pull-write":925}],336:[function(require,module,exports){
+},{"../builder":241,"../chunker/fixed-size":245,"./tree-builder":262,"_process":729,"assert":715,"async/setImmediate":54,"pull-pause":594,"pull-pushable":595,"pull-stream":600,"pull-write":633}],262:[function(require,module,exports){
 (function (process){
 'use strict'
 
@@ -38295,13 +38433,13 @@ function notEmpty (str) {
 }
 
 }).call(this,require('_process'))
-},{"./dir":333,"./dir-flat":331,"./flat-to-shard":334,"_process":1024,"async/eachOfSeries":284,"async/eachSeries":285,"async/queue":305,"async/waterfall":307,"pull-pushable":887,"pull-write":925}],337:[function(require,module,exports){
+},{"./dir":259,"./dir-flat":257,"./flat-to-shard":260,"_process":729,"async/eachOfSeries":25,"async/eachSeries":26,"async/queue":51,"async/waterfall":57,"pull-pushable":595,"pull-write":633}],263:[function(require,module,exports){
 'use strict'
 
 exports.importer = exports.Importer = require('./importer')
 exports.exporter = exports.Exporter = require('./exporter')
 
-},{"./exporter":324,"./importer":335}],338:[function(require,module,exports){
+},{"./exporter":250,"./importer":261}],264:[function(require,module,exports){
 'use strict'
 
 const protons = require('protons')
@@ -38405,7 +38543,7 @@ Data.unmarshal = (marsheled) => {
 
 exports = module.exports = Data
 
-},{"./unixfs.proto":339,"protons":867}],339:[function(require,module,exports){
+},{"./unixfs.proto":265,"protons":575}],265:[function(require,module,exports){
 'use strict'
 
 module.exports = `message Data {
@@ -38431,160 +38569,11 @@ message Metadata {
   required string MimeType = 1;
 }`
 
-},{}],340:[function(require,module,exports){
-arguments[4][72][0].apply(exports,arguments)
-},{"./internal/initialParams":352,"./internal/setImmediate":358,"dup":72,"lodash/isObject":758}],341:[function(require,module,exports){
-arguments[4][73][0].apply(exports,arguments)
-},{"./eachOf":342,"./internal/withoutIndex":360,"./internal/wrapAsync":361,"dup":73}],342:[function(require,module,exports){
-arguments[4][74][0].apply(exports,arguments)
-},{"./eachOfLimit":343,"./internal/breakLoop":346,"./internal/doLimit":348,"./internal/once":355,"./internal/onlyOnce":356,"./internal/wrapAsync":361,"dup":74,"lodash/isArrayLike":754,"lodash/noop":762}],343:[function(require,module,exports){
-arguments[4][75][0].apply(exports,arguments)
-},{"./internal/eachOfLimit":350,"./internal/wrapAsync":361,"dup":75}],344:[function(require,module,exports){
-arguments[4][200][0].apply(exports,arguments)
-},{"./eachOfLimit":343,"./internal/doLimit":348,"dup":200}],345:[function(require,module,exports){
-'use strict';
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-
-var _createTester = require('./internal/createTester');
-
-var _createTester2 = _interopRequireDefault(_createTester);
-
-var _doParallel = require('./internal/doParallel');
-
-var _doParallel2 = _interopRequireDefault(_doParallel);
-
-var _notId = require('./internal/notId');
-
-var _notId2 = _interopRequireDefault(_notId);
-
-function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
-
-/**
- * Returns `true` if every element in `coll` satisfies an async test. If any
- * iteratee call returns `false`, the main `callback` is immediately called.
- *
- * @name every
- * @static
- * @memberOf module:Collections
- * @method
- * @alias all
- * @category Collection
- * @param {Array|Iterable|Object} coll - A collection to iterate over.
- * @param {AsyncFunction} iteratee - An async truth test to apply to each item
- * in the collection in parallel.
- * The iteratee must complete with a boolean result value.
- * Invoked with (item, callback).
- * @param {Function} [callback] - A callback which is called after all the
- * `iteratee` functions have finished. Result will be either `true` or `false`
- * depending on the values of the async tests. Invoked with (err, result).
- * @example
- *
- * async.every(['file1','file2','file3'], function(filePath, callback) {
- *     fs.access(filePath, function(err) {
- *         callback(null, !err)
- *     });
- * }, function(err, result) {
- *     // if result is true then every file exists
- * });
- */
-exports.default = (0, _doParallel2.default)((0, _createTester2.default)(_notId2.default, _notId2.default));
-module.exports = exports['default'];
-},{"./internal/createTester":347,"./internal/doParallel":349,"./internal/notId":354}],346:[function(require,module,exports){
-arguments[4][76][0].apply(exports,arguments)
-},{"dup":76}],347:[function(require,module,exports){
-'use strict';
-
-Object.defineProperty(exports, "__esModule", {
-    value: true
-});
-exports.default = _createTester;
-
-var _noop = require('lodash/noop');
-
-var _noop2 = _interopRequireDefault(_noop);
-
-var _breakLoop = require('./breakLoop');
-
-var _breakLoop2 = _interopRequireDefault(_breakLoop);
-
-function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
-
-function _createTester(check, getResult) {
-    return function (eachfn, arr, iteratee, cb) {
-        cb = cb || _noop2.default;
-        var testPassed = false;
-        var testResult;
-        eachfn(arr, function (value, _, callback) {
-            iteratee(value, function (err, result) {
-                if (err) {
-                    callback(err);
-                } else if (check(result) && !testResult) {
-                    testPassed = true;
-                    testResult = getResult(true, value);
-                    callback(null, _breakLoop2.default);
-                } else {
-                    callback();
-                }
-            });
-        }, function (err) {
-            if (err) {
-                cb(err);
-            } else {
-                cb(null, testPassed ? testResult : getResult(false));
-            }
-        });
-    };
-}
-module.exports = exports['default'];
-},{"./breakLoop":346,"lodash/noop":762}],348:[function(require,module,exports){
-arguments[4][77][0].apply(exports,arguments)
-},{"dup":77}],349:[function(require,module,exports){
-arguments[4][204][0].apply(exports,arguments)
-},{"../eachOf":342,"./wrapAsync":361,"dup":204}],350:[function(require,module,exports){
-arguments[4][78][0].apply(exports,arguments)
-},{"./breakLoop":346,"./iterator":353,"./once":355,"./onlyOnce":356,"dup":78,"lodash/noop":762}],351:[function(require,module,exports){
-arguments[4][79][0].apply(exports,arguments)
-},{"dup":79}],352:[function(require,module,exports){
-arguments[4][80][0].apply(exports,arguments)
-},{"./slice":359,"dup":80}],353:[function(require,module,exports){
-arguments[4][81][0].apply(exports,arguments)
-},{"./getIterator":351,"dup":81,"lodash/isArrayLike":754,"lodash/keys":761}],354:[function(require,module,exports){
-"use strict";
-
-Object.defineProperty(exports, "__esModule", {
-    value: true
-});
-exports.default = notId;
-function notId(v) {
-    return !v;
-}
-module.exports = exports["default"];
-},{}],355:[function(require,module,exports){
-arguments[4][82][0].apply(exports,arguments)
-},{"dup":82}],356:[function(require,module,exports){
-arguments[4][83][0].apply(exports,arguments)
-},{"dup":83}],357:[function(require,module,exports){
-arguments[4][84][0].apply(exports,arguments)
-},{"./slice":359,"./wrapAsync":361,"dup":84,"lodash/isArrayLike":754,"lodash/noop":762}],358:[function(require,module,exports){
-arguments[4][85][0].apply(exports,arguments)
-},{"./slice":359,"_process":1024,"dup":85}],359:[function(require,module,exports){
-arguments[4][86][0].apply(exports,arguments)
-},{"dup":86}],360:[function(require,module,exports){
-arguments[4][87][0].apply(exports,arguments)
-},{"dup":87}],361:[function(require,module,exports){
-arguments[4][88][0].apply(exports,arguments)
-},{"../asyncify":340,"dup":88}],362:[function(require,module,exports){
-arguments[4][89][0].apply(exports,arguments)
-},{"./eachOf":342,"./internal/parallel":357,"dup":89}],363:[function(require,module,exports){
-arguments[4][221][0].apply(exports,arguments)
-},{"./eachOfSeries":344,"./internal/parallel":357,"dup":221}],364:[function(require,module,exports){
-arguments[4][186][0].apply(exports,arguments)
-},{"./internal/setImmediate":358,"dup":186}],365:[function(require,module,exports){
-arguments[4][90][0].apply(exports,arguments)
-},{"./internal/once":355,"./internal/onlyOnce":356,"./internal/slice":359,"./internal/wrapAsync":361,"dup":90,"lodash/isArray":753,"lodash/noop":762}],366:[function(require,module,exports){
+},{}],266:[function(require,module,exports){
+arguments[4][208][0].apply(exports,arguments)
+},{"./debug":267,"_process":729,"dup":208}],267:[function(require,module,exports){
+arguments[4][209][0].apply(exports,arguments)
+},{"dup":209,"ms":514}],268:[function(require,module,exports){
 module.exports={
   "_from": "ipfs",
   "_id": "ipfs@0.26.0",
@@ -38592,9 +38581,7 @@ module.exports={
   "_integrity": "sha512-0FKFV7oyiIaZVE+PtuxB16Xg76jw+LCXEGWy+BF0QWSdyqqaXpfQvd2XSgAYLSctbOxlMKLJSOJV5Sb32X2QCw==",
   "_location": "/ipfs",
   "_phantomChildren": {
-    "find-up": "2.1.0",
-    "lodash": "4.17.4",
-    "read-pkg": "2.0.0"
+    "ms": "2.0.0"
   },
   "_requested": {
     "type": "tag",
@@ -38613,7 +38600,7 @@ module.exports={
   "_resolved": "https://registry.npmjs.org/ipfs/-/ipfs-0.26.0.tgz",
   "_shasum": "54335ecdff0e35dedde3a48cd1a9f1c354dca42d",
   "_spec": "ipfs",
-  "_where": "/home/vipul/Documents/ethereum/messaging",
+  "_where": "/home/vipul/Documents/ethereum/ipfs-chat",
   "author": {
     "name": "David Dias",
     "email": "daviddias@ipfs.io"
@@ -39002,7 +38989,7 @@ module.exports={
   "version": "0.26.0"
 }
 
-},{}],367:[function(require,module,exports){
+},{}],269:[function(require,module,exports){
 'use strict'
 
 const waterfall = require('async/waterfall')
@@ -39114,7 +39101,7 @@ module.exports = (self) => {
   })
 }
 
-},{"async/series":363,"async/waterfall":365,"deep-extend":103}],368:[function(require,module,exports){
+},{"async/series":53,"async/waterfall":57,"deep-extend":124}],270:[function(require,module,exports){
 'use strict'
 
 const OFFLINE_ERROR = require('../utils').OFFLINE_ERROR
@@ -39154,7 +39141,7 @@ module.exports = function bitswap (self) {
   }
 }
 
-},{"../utils":394}],369:[function(require,module,exports){
+},{"../utils":296}],271:[function(require,module,exports){
 'use strict'
 
 const Block = require('ipfs-block')
@@ -39239,7 +39226,7 @@ function cleanCid (cid) {
   return new CID(cid)
 }
 
-},{"async/waterfall":365,"cids":61,"ipfs-block":240,"multihashes":787,"multihashing-async":794}],370:[function(require,module,exports){
+},{"async/waterfall":57,"cids":102,"ipfs-block":226,"multihashes":529,"multihashing-async":533}],272:[function(require,module,exports){
 'use strict'
 
 const defaultNodes = require('../runtime/config-nodejs.json').Bootstrap
@@ -39311,7 +39298,7 @@ module.exports = function bootstrap (self) {
   }
 }
 
-},{"../runtime/config-nodejs.json":390}],371:[function(require,module,exports){
+},{"../runtime/config-nodejs.json":292}],273:[function(require,module,exports){
 'use strict'
 
 const promisify = require('promisify-es6')
@@ -39335,7 +39322,7 @@ module.exports = function config (self) {
   }
 }
 
-},{"promisify-es6":856}],372:[function(require,module,exports){
+},{"promisify-es6":564}],274:[function(require,module,exports){
 'use strict'
 
 const promisify = require('promisify-es6')
@@ -39415,7 +39402,7 @@ module.exports = function dag (self) {
   }
 }
 
-},{"cids":61,"promisify-es6":856,"pull-stream":892}],373:[function(require,module,exports){
+},{"cids":102,"promisify-es6":564,"pull-stream":600}],275:[function(require,module,exports){
 (function (Buffer){
 'use strict'
 
@@ -39581,8 +39568,8 @@ module.exports = (self) => {
   }
 }
 
-}).call(this,{"isBuffer":require("../../../../../../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js")})
-},{"../../../../../../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js":1019,"async/each":341,"async/every":345,"cids":61,"peer-id":849,"promisify-es6":856}],374:[function(require,module,exports){
+}).call(this,{"isBuffer":require("../../../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js")})
+},{"../../../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js":724,"async/each":21,"async/every":27,"cids":102,"peer-id":558,"promisify-es6":564}],276:[function(require,module,exports){
 (function (Buffer){
 'use strict'
 
@@ -39791,8 +39778,8 @@ class AddStreamDuplex extends Duplex {
   }
 }
 
-}).call(this,{"isBuffer":require("../../../../../../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js")})
-},{"../../../../../../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js":1019,"async/waterfall":365,"cids":61,"ipfs-unixfs-engine":337,"is-stream":502,"promisify-es6":856,"pull-pushable":887,"pull-sort":890,"pull-stream":892,"pull-stream-to-stream":891,"stream":944,"stream-to-pull-stream":992}],375:[function(require,module,exports){
+}).call(this,{"isBuffer":require("../../../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js")})
+},{"../../../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js":724,"async/waterfall":57,"cids":102,"ipfs-unixfs-engine":263,"is-stream":339,"promisify-es6":564,"pull-pushable":595,"pull-sort":598,"pull-stream":600,"pull-stream-to-stream":599,"stream":652,"stream-to-pull-stream":694}],277:[function(require,module,exports){
 'use strict'
 
 const promisify = require('promisify-es6')
@@ -39819,7 +39806,7 @@ module.exports = function id (self) {
   })
 }
 
-},{"async/setImmediate":364,"promisify-es6":856}],376:[function(require,module,exports){
+},{"async/setImmediate":54,"promisify-es6":564}],278:[function(require,module,exports){
 'use strict'
 
 exports.preStart = require('./pre-start')
@@ -39843,7 +39830,7 @@ exports.bitswap = require('./bitswap')
 exports.pubsub = require('./pubsub')
 exports.dht = require('./dht')
 
-},{"./bitswap":368,"./block":369,"./bootstrap":370,"./config":371,"./dag":372,"./dht":373,"./files":374,"./id":375,"./init":377,"./is-online":378,"./libp2p":379,"./object":380,"./ping":381,"./pre-start":382,"./pubsub":383,"./repo":384,"./start":385,"./stop":386,"./swarm":387,"./version":388}],377:[function(require,module,exports){
+},{"./bitswap":270,"./block":271,"./bootstrap":272,"./config":273,"./dag":274,"./dht":275,"./files":276,"./id":277,"./init":279,"./is-online":280,"./libp2p":281,"./object":282,"./ping":283,"./pre-start":284,"./pubsub":285,"./repo":286,"./start":287,"./stop":288,"./swarm":289,"./version":290}],279:[function(require,module,exports){
 'use strict'
 
 const peerId = require('peer-id')
@@ -39936,7 +39923,7 @@ module.exports = function init (self) {
   })
 }
 
-},{"../runtime/config-nodejs.json":390,"./init-assets":1012,"async/parallel":362,"async/waterfall":365,"peer-id":849,"promisify-es6":856}],378:[function(require,module,exports){
+},{"../runtime/config-nodejs.json":292,"./init-assets":717,"async/parallel":50,"async/waterfall":57,"peer-id":558,"promisify-es6":564}],280:[function(require,module,exports){
 'use strict'
 
 module.exports = function isOnline (self) {
@@ -39945,7 +39932,7 @@ module.exports = function isOnline (self) {
   }
 }
 
-},{}],379:[function(require,module,exports){
+},{}],281:[function(require,module,exports){
 'use strict'
 
 // libp2p-nodejs gets replaced by libp2p-browser when webpacked/browserified
@@ -40008,7 +39995,7 @@ module.exports = function libp2p (self) {
   }
 }
 
-},{"../runtime/libp2p-nodejs":391,"lodash.get":714,"promisify-es6":856}],380:[function(require,module,exports){
+},{"../runtime/libp2p-nodejs":293,"lodash.get":456,"promisify-es6":564}],282:[function(require,module,exports){
 (function (Buffer){
 'use strict'
 
@@ -40312,7 +40299,7 @@ module.exports = function object (self) {
 }
 
 }).call(this,require("buffer").Buffer)
-},{"assert":1010,"async/waterfall":365,"buffer":1013,"cids":61,"ipfs-unixfs":338,"ipld-dag-pb":424,"multihashes":787,"promisify-es6":856}],381:[function(require,module,exports){
+},{"assert":715,"async/waterfall":57,"buffer":718,"cids":102,"ipfs-unixfs":264,"ipld-dag-pb":309,"multihashes":529,"promisify-es6":564}],283:[function(require,module,exports){
 'use strict'
 
 const promisify = require('promisify-es6')
@@ -40323,7 +40310,7 @@ module.exports = function ping (self) {
   })
 }
 
-},{"promisify-es6":856}],382:[function(require,module,exports){
+},{"promisify-es6":564}],284:[function(require,module,exports){
 'use strict'
 
 const peerId = require('peer-id')
@@ -40365,7 +40352,7 @@ module.exports = function preStart (self) {
   }
 }
 
-},{"async/waterfall":365,"mafmt":766,"multiaddr":775,"peer-id":849,"peer-info":850}],383:[function(require,module,exports){
+},{"async/waterfall":57,"mafmt":508,"multiaddr":517,"peer-id":558,"peer-info":559}],285:[function(require,module,exports){
 (function (Buffer){
 'use strict'
 
@@ -40465,8 +40452,8 @@ module.exports = function pubsub (self) {
   }
 }
 
-}).call(this,{"isBuffer":require("../../../../../../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js")})
-},{"../../../../../../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js":1019,"../utils":394,"async/setImmediate":364,"promisify-es6":856}],384:[function(require,module,exports){
+}).call(this,{"isBuffer":require("../../../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js")})
+},{"../../../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js":724,"../utils":296,"async/setImmediate":54,"promisify-es6":564}],286:[function(require,module,exports){
 'use strict'
 
 module.exports = function repo (self) {
@@ -40485,7 +40472,7 @@ module.exports = function repo (self) {
   }
 }
 
-},{}],385:[function(require,module,exports){
+},{}],287:[function(require,module,exports){
 'use strict'
 
 const series = require('async/series')
@@ -40548,7 +40535,7 @@ module.exports = (self) => {
   })
 }
 
-},{"async/series":363,"async/setImmediate":364,"ipfs-bitswap":227,"libp2p-floodsub":585,"promisify-es6":856}],386:[function(require,module,exports){
+},{"async/series":53,"async/setImmediate":54,"ipfs-bitswap":213,"libp2p-floodsub":396,"promisify-es6":564}],288:[function(require,module,exports){
 'use strict'
 
 const series = require('async/series')
@@ -40594,7 +40581,7 @@ module.exports = (self) => {
   }
 }
 
-},{"async/series":363}],387:[function(require,module,exports){
+},{"async/series":53}],289:[function(require,module,exports){
 'use strict'
 
 const multiaddr = require('multiaddr')
@@ -40687,7 +40674,7 @@ module.exports = function swarm (self) {
   }
 }
 
-},{"../utils":394,"lodash.values":727,"multiaddr":775,"promisify-es6":856}],388:[function(require,module,exports){
+},{"../utils":296,"lodash.values":469,"multiaddr":517,"promisify-es6":564}],290:[function(require,module,exports){
 'use strict'
 
 const pkg = require('../../../package.json')
@@ -40708,7 +40695,7 @@ module.exports = function version (self) {
   })
 }
 
-},{"../../../package.json":366,"promisify-es6":856}],389:[function(require,module,exports){
+},{"../../../package.json":268,"promisify-es6":564}],291:[function(require,module,exports){
 (function (Buffer){
 'use strict'
 
@@ -40832,7 +40819,7 @@ exports.createNode = (options) => {
 }
 
 }).call(this,require("buffer").Buffer)
-},{"./boot":367,"./components":376,"./runtime/repo-nodejs":392,"./state":393,"buffer":1013,"cids":61,"debug":101,"deep-extend":103,"events":1015,"ipfs-block-service":238,"ipld-resolver":499,"multiaddr":775,"multihashes":787,"peer-book":840,"peer-id":849,"peer-info":850}],390:[function(require,module,exports){
+},{"./boot":269,"./components":278,"./runtime/repo-nodejs":294,"./state":295,"buffer":718,"cids":102,"debug":266,"deep-extend":124,"events":720,"ipfs-block-service":224,"ipld-resolver":335,"multiaddr":517,"multihashes":529,"peer-book":557,"peer-id":558,"peer-info":559}],292:[function(require,module,exports){
 module.exports={
   "Addresses": {
     "Swarm": [
@@ -40862,7 +40849,7 @@ module.exports={
   ]
 }
 
-},{}],391:[function(require,module,exports){
+},{}],293:[function(require,module,exports){
 'use strict'
 
 const WS = require('libp2p-websockets')
@@ -40897,7 +40884,7 @@ class Node extends libp2p {
 
 module.exports = Node
 
-},{"libp2p":710,"libp2p-multiplex":598,"libp2p-railing":609,"libp2p-secio":636,"libp2p-webrtc-star":680,"libp2p-websockets":687}],392:[function(require,module,exports){
+},{"libp2p":452,"libp2p-multiplex":406,"libp2p-railing":416,"libp2p-secio":426,"libp2p-webrtc-star":442,"libp2p-websockets":449}],294:[function(require,module,exports){
 'use strict'
 
 const IPFSRepo = require('ipfs-repo')
@@ -40907,7 +40894,7 @@ module.exports = (dir) => {
   return new IPFSRepo(repoPath)
 }
 
-},{"ipfs-repo":277}],393:[function(require,module,exports){
+},{"ipfs-repo":232}],295:[function(require,module,exports){
 'use strict'
 
 const debug = require('debug')
@@ -40974,36 +40961,18 @@ module.exports = (self) => {
   return s
 }
 
-},{"debug":101,"fsm-event":158}],394:[function(require,module,exports){
+},{"debug":266,"fsm-event":177}],296:[function(require,module,exports){
 'use strict'
 
 exports.OFFLINE_ERROR = new Error('This command must be run in online mode. Try running \'ipfs daemon\' first.')
 
-},{}],395:[function(require,module,exports){
-arguments[4][72][0].apply(exports,arguments)
-},{"./internal/initialParams":396,"./internal/setImmediate":399,"dup":72,"lodash/isObject":758}],396:[function(require,module,exports){
-arguments[4][80][0].apply(exports,arguments)
-},{"./slice":400,"dup":80}],397:[function(require,module,exports){
-arguments[4][82][0].apply(exports,arguments)
-},{"dup":82}],398:[function(require,module,exports){
-arguments[4][83][0].apply(exports,arguments)
-},{"dup":83}],399:[function(require,module,exports){
-arguments[4][85][0].apply(exports,arguments)
-},{"./slice":400,"_process":1024,"dup":85}],400:[function(require,module,exports){
-arguments[4][86][0].apply(exports,arguments)
-},{"dup":86}],401:[function(require,module,exports){
-arguments[4][88][0].apply(exports,arguments)
-},{"../asyncify":395,"dup":88}],402:[function(require,module,exports){
-arguments[4][186][0].apply(exports,arguments)
-},{"./internal/setImmediate":399,"dup":186}],403:[function(require,module,exports){
-arguments[4][90][0].apply(exports,arguments)
-},{"./internal/once":397,"./internal/onlyOnce":398,"./internal/slice":400,"./internal/wrapAsync":401,"dup":90,"lodash/isArray":753,"lodash/noop":762}],404:[function(require,module,exports){
+},{}],297:[function(require,module,exports){
 'use strict'
 
 exports.util = require('./util.js')
 exports.resolver = require('./resolver.js')
 
-},{"./resolver.js":405,"./util.js":406}],405:[function(require,module,exports){
+},{"./resolver.js":298,"./util.js":299}],298:[function(require,module,exports){
 (function (Buffer){
 'use strict'
 
@@ -41140,8 +41109,8 @@ exports.isLink = (block, path, callback) => {
   })
 }
 
-}).call(this,{"isBuffer":require("../../../../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js")})
-},{"../../../../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js":1019,"./util":406,"traverse":997}],406:[function(require,module,exports){
+}).call(this,{"isBuffer":require("../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js")})
+},{"../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js":724,"./util":299,"traverse":699}],299:[function(require,module,exports){
 (function (Buffer){
 'use strict'
 
@@ -41262,23 +41231,7 @@ exports.cid = (dagNode, callback) => {
 }
 
 }).call(this,require("buffer").Buffer)
-},{"./resolver":405,"async/setImmediate":402,"async/waterfall":403,"borc":35,"buffer":1013,"cids":61,"is-circular":500,"multihashing-async":794}],407:[function(require,module,exports){
-arguments[4][72][0].apply(exports,arguments)
-},{"./internal/initialParams":408,"./internal/setImmediate":411,"dup":72,"lodash/isObject":758}],408:[function(require,module,exports){
-arguments[4][80][0].apply(exports,arguments)
-},{"./slice":412,"dup":80}],409:[function(require,module,exports){
-arguments[4][82][0].apply(exports,arguments)
-},{"dup":82}],410:[function(require,module,exports){
-arguments[4][83][0].apply(exports,arguments)
-},{"dup":83}],411:[function(require,module,exports){
-arguments[4][85][0].apply(exports,arguments)
-},{"./slice":412,"_process":1024,"dup":85}],412:[function(require,module,exports){
-arguments[4][86][0].apply(exports,arguments)
-},{"dup":86}],413:[function(require,module,exports){
-arguments[4][88][0].apply(exports,arguments)
-},{"../asyncify":407,"dup":88}],414:[function(require,module,exports){
-arguments[4][90][0].apply(exports,arguments)
-},{"./internal/once":409,"./internal/onlyOnce":410,"./internal/slice":412,"./internal/wrapAsync":413,"dup":90,"lodash/isArray":753,"lodash/noop":762}],415:[function(require,module,exports){
+},{"./resolver":298,"async/setImmediate":54,"async/waterfall":57,"borc":76,"buffer":718,"cids":102,"is-circular":336,"multihashing-async":533}],300:[function(require,module,exports){
 'use strict'
 
 const DAGLink = require('./index.js')
@@ -41290,7 +41243,7 @@ function create (name, size, multihash, callback) {
 
 module.exports = create
 
-},{"./index.js":416}],416:[function(require,module,exports){
+},{"./index.js":301}],301:[function(require,module,exports){
 (function (Buffer){
 'use strict'
 
@@ -41354,8 +41307,8 @@ class DAGLink {
 exports = module.exports = DAGLink
 exports.create = require('./create')
 
-}).call(this,{"isBuffer":require("../../../../../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js")})
-},{"../../../../../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js":1019,"./create":415,"assert":1010,"multihashes":787}],417:[function(require,module,exports){
+}).call(this,{"isBuffer":require("../../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js")})
+},{"../../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js":724,"./create":300,"assert":715,"multihashes":529}],302:[function(require,module,exports){
 'use strict'
 
 const dagNodeUtil = require('./util')
@@ -41392,7 +41345,7 @@ function addLink (node, link, callback) {
 
 module.exports = addLink
 
-},{"./../dag-link":416,"./create":419,"./util":422}],418:[function(require,module,exports){
+},{"./../dag-link":301,"./create":304,"./util":307}],303:[function(require,module,exports){
 'use strict'
 
 const dagNodeUtil = require('./util')
@@ -41408,7 +41361,7 @@ function clone (dagNode, callback) {
 
 module.exports = clone
 
-},{"./create":419,"./util":422}],419:[function(require,module,exports){
+},{"./create":304,"./util":307}],304:[function(require,module,exports){
 (function (Buffer){
 'use strict'
 
@@ -41478,7 +41431,7 @@ function create (data, dagLinks, hashAlg, callback) {
 module.exports = create
 
 }).call(this,require("buffer").Buffer)
-},{"../util.js":426,"./../dag-link":416,"./index.js":420,"./util.js":422,"buffer":1013,"multihashing-async":794,"stable":990}],420:[function(require,module,exports){
+},{"../util.js":311,"./../dag-link":301,"./index.js":305,"./util.js":307,"buffer":718,"multihashing-async":533,"stable":692}],305:[function(require,module,exports){
 (function (Buffer){
 'use strict'
 
@@ -41566,7 +41519,7 @@ exports.addLink = require('./addLink')
 exports.rmLink = require('./rmLink')
 
 }).call(this,require("buffer").Buffer)
-},{"./addLink":417,"./clone":418,"./create":419,"./rmLink":421,"assert":1010,"buffer":1013,"multihashes":787}],421:[function(require,module,exports){
+},{"./addLink":302,"./clone":303,"./create":304,"./rmLink":306,"assert":715,"buffer":718,"multihashes":529}],306:[function(require,module,exports){
 (function (Buffer){
 'use strict'
 
@@ -41592,8 +41545,8 @@ function rmLink (dagNode, nameOrMultihash, callback) {
 
 module.exports = rmLink
 
-}).call(this,{"isBuffer":require("../../../../../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js")})
-},{"../../../../../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js":1019,"./create":419,"./util":422}],422:[function(require,module,exports){
+}).call(this,{"isBuffer":require("../../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js")})
+},{"../../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js":724,"./create":304,"./util":307}],307:[function(require,module,exports){
 (function (Buffer){
 'use strict'
 
@@ -41638,7 +41591,7 @@ exports.linkSort = linkSort
 exports.toDAGLink = toDAGLink
 
 }).call(this,require("buffer").Buffer)
-},{"./../dag-link":416,"buffer":1013}],423:[function(require,module,exports){
+},{"./../dag-link":301,"buffer":718}],308:[function(require,module,exports){
 'use strict'
 
 module.exports = `// An IPFS MerkleDAG Link
@@ -41664,7 +41617,7 @@ message PBNode {
   optional bytes Data = 1;
 }`
 
-},{}],424:[function(require,module,exports){
+},{}],309:[function(require,module,exports){
 'use strict'
 
 exports.DAGNode = require('./dag-node')
@@ -41677,7 +41630,7 @@ exports.DAGLink = require('./dag-link')
 exports.resolver = require('./resolver')
 exports.util = require('./util')
 
-},{"./dag-link":416,"./dag-node":420,"./resolver":425,"./util":426}],425:[function(require,module,exports){
+},{"./dag-link":301,"./dag-node":305,"./resolver":310,"./util":311}],310:[function(require,module,exports){
 'use strict'
 
 const waterfall = require('async/waterfall')
@@ -41804,7 +41757,7 @@ exports.isLink = (block, path, callback) => {
   })
 }
 
-},{"./util":426,"async/waterfall":414}],426:[function(require,module,exports){
+},{"./util":311,"async/waterfall":57}],311:[function(require,module,exports){
 (function (Buffer){
 'use strict'
 
@@ -41877,7 +41830,7 @@ exports.deserialize = deserialize
 exports.cid = cid
 
 }).call(this,require("buffer").Buffer)
-},{"./dag-link":416,"./dag-node":420,"./dag.proto.js":423,"buffer":1013,"cids":61,"protons":867}],427:[function(require,module,exports){
+},{"./dag-link":301,"./dag-node":305,"./dag.proto.js":308,"buffer":718,"cids":102,"protons":575}],312:[function(require,module,exports){
 'use strict'
 const EthAccount = require('ethereumjs-account')
 const createResolver = require('../util/createResolver')
@@ -41940,7 +41893,7 @@ function mapFromEthObj (account, options, callback) {
   callback(null, paths)
 }
 
-},{"../util/cidFromHash":453,"../util/createResolver":455,"ethereumjs-account":150}],428:[function(require,module,exports){
+},{"../util/cidFromHash":321,"../util/createResolver":323,"ethereumjs-account":169}],313:[function(require,module,exports){
 'use strict'
 const waterfall = require('async/waterfall')
 const each = require('async/each')
@@ -42012,7 +41965,7 @@ function mapFromEthObj (ethBlockList, options, callback) {
   })
 }
 
-},{"../eth-block":429,"../util/cidFromHash":453,"../util/createResolver":455,"async/asyncify":434,"async/each":435,"async/waterfall":450,"ethereumjs-block/header":151,"multihashing-async":794,"rlp":947}],429:[function(require,module,exports){
+},{"../eth-block":314,"../util/cidFromHash":321,"../util/createResolver":323,"async/asyncify":18,"async/each":21,"async/waterfall":57,"ethereumjs-block/header":170,"multihashing-async":533,"rlp":655}],314:[function(require,module,exports){
 'use strict'
 const EthBlockHeader = require('ethereumjs-block/header')
 const createResolver = require('../util/createResolver')
@@ -42113,7 +42066,7 @@ function mapFromEthObj (ethObj, options, callback) {
   callback(null, paths)
 }
 
-},{"../util/cidFromHash":453,"../util/createResolver":455,"ethereumjs-block/header":151}],430:[function(require,module,exports){
+},{"../util/cidFromHash":321,"../util/createResolver":323,"ethereumjs-block/header":170}],315:[function(require,module,exports){
 'use strict'
 /* eslint max-nested-callbacks: ["error", 5] */
 
@@ -42124,7 +42077,7 @@ const ethStateTrieResolver = createTrieResolver('eth-state-trie', ethAccountSnap
 
 module.exports = ethStateTrieResolver
 
-},{"../eth-account-snapshot":427,"../util/createTrieResolver":456}],431:[function(require,module,exports){
+},{"../eth-account-snapshot":312,"../util/createTrieResolver":324}],316:[function(require,module,exports){
 'use strict'
 /* eslint max-nested-callbacks: ["error", 5] */
 
@@ -42134,7 +42087,7 @@ const ethStorageTrieResolver = createTrieResolver('eth-storage-trie')
 
 module.exports = ethStorageTrieResolver
 
-},{"../util/createTrieResolver":456}],432:[function(require,module,exports){
+},{"../util/createTrieResolver":324}],317:[function(require,module,exports){
 'use strict'
 /* eslint max-nested-callbacks: ["error", 5] */
 
@@ -42145,7 +42098,7 @@ const ethTxTrieResolver = createTrieResolver('eth-tx-trie', ethTxResolver)
 
 module.exports = ethTxTrieResolver
 
-},{"../eth-tx":433,"../util/createTrieResolver":456}],433:[function(require,module,exports){
+},{"../eth-tx":318,"../util/createTrieResolver":324}],318:[function(require,module,exports){
 'use strict'
 const EthTx = require('ethereumjs-tx')
 const createResolver = require('../util/createResolver')
@@ -42220,41 +42173,7 @@ function mapFromEthObj (tx, options, callback) {
   callback(null, paths)
 }
 
-},{"../util/cidFromHash":453,"../util/createResolver":455,"ethereumjs-tx":153}],434:[function(require,module,exports){
-arguments[4][72][0].apply(exports,arguments)
-},{"./internal/initialParams":442,"./internal/setImmediate":446,"dup":72,"lodash/isObject":758}],435:[function(require,module,exports){
-arguments[4][73][0].apply(exports,arguments)
-},{"./eachOf":436,"./internal/withoutIndex":448,"./internal/wrapAsync":449,"dup":73}],436:[function(require,module,exports){
-arguments[4][74][0].apply(exports,arguments)
-},{"./eachOfLimit":437,"./internal/breakLoop":438,"./internal/doLimit":439,"./internal/once":444,"./internal/onlyOnce":445,"./internal/wrapAsync":449,"dup":74,"lodash/isArrayLike":754,"lodash/noop":762}],437:[function(require,module,exports){
-arguments[4][75][0].apply(exports,arguments)
-},{"./internal/eachOfLimit":440,"./internal/wrapAsync":449,"dup":75}],438:[function(require,module,exports){
-arguments[4][76][0].apply(exports,arguments)
-},{"dup":76}],439:[function(require,module,exports){
-arguments[4][77][0].apply(exports,arguments)
-},{"dup":77}],440:[function(require,module,exports){
-arguments[4][78][0].apply(exports,arguments)
-},{"./breakLoop":438,"./iterator":443,"./once":444,"./onlyOnce":445,"dup":78,"lodash/noop":762}],441:[function(require,module,exports){
-arguments[4][79][0].apply(exports,arguments)
-},{"dup":79}],442:[function(require,module,exports){
-arguments[4][80][0].apply(exports,arguments)
-},{"./slice":447,"dup":80}],443:[function(require,module,exports){
-arguments[4][81][0].apply(exports,arguments)
-},{"./getIterator":441,"dup":81,"lodash/isArrayLike":754,"lodash/keys":761}],444:[function(require,module,exports){
-arguments[4][82][0].apply(exports,arguments)
-},{"dup":82}],445:[function(require,module,exports){
-arguments[4][83][0].apply(exports,arguments)
-},{"dup":83}],446:[function(require,module,exports){
-arguments[4][85][0].apply(exports,arguments)
-},{"./slice":447,"_process":1024,"dup":85}],447:[function(require,module,exports){
-arguments[4][86][0].apply(exports,arguments)
-},{"dup":86}],448:[function(require,module,exports){
-arguments[4][87][0].apply(exports,arguments)
-},{"dup":87}],449:[function(require,module,exports){
-arguments[4][88][0].apply(exports,arguments)
-},{"../asyncify":434,"dup":88}],450:[function(require,module,exports){
-arguments[4][90][0].apply(exports,arguments)
-},{"./internal/once":444,"./internal/onlyOnce":445,"./internal/slice":447,"./internal/wrapAsync":449,"dup":90,"lodash/isArray":753,"lodash/noop":762}],451:[function(require,module,exports){
+},{"../util/cidFromHash":321,"../util/createResolver":323,"ethereumjs-tx":172}],319:[function(require,module,exports){
 'use strict'
 
 module.exports = {
@@ -42267,7 +42186,7 @@ module.exports = {
   ethTxTrie: require('../eth-tx-trie')
 }
 
-},{"../eth-account-snapshot":427,"../eth-block":429,"../eth-block-list":428,"../eth-state-trie":430,"../eth-storage-trie":431,"../eth-tx":433,"../eth-tx-trie":432}],452:[function(require,module,exports){
+},{"../eth-account-snapshot":312,"../eth-block":314,"../eth-block-list":313,"../eth-state-trie":315,"../eth-storage-trie":316,"../eth-tx":318,"../eth-tx-trie":317}],320:[function(require,module,exports){
 'use strict'
 const cidFromHash = require('./cidFromHash')
 
@@ -42279,7 +42198,7 @@ function cidFromEthObj (multicodec, ethObj) {
   return cid
 }
 
-},{"./cidFromHash":453}],453:[function(require,module,exports){
+},{"./cidFromHash":321}],321:[function(require,module,exports){
 'use strict'
 const CID = require('cids')
 const multihashes = require('multihashes')
@@ -42292,7 +42211,7 @@ function cidFromHash (codec, hashBuffer) {
   return cid
 }
 
-},{"cids":61,"multihashes":787}],454:[function(require,module,exports){
+},{"cids":102,"multihashes":529}],322:[function(require,module,exports){
 module.exports = createIsLink
 
 function createIsLink (resolve) {
@@ -42315,7 +42234,7 @@ function createIsLink (resolve) {
   }
 }
 
-},{}],455:[function(require,module,exports){
+},{}],323:[function(require,module,exports){
 'use strict'
 const waterfall = require('async/waterfall')
 const createIsLink = require('../util/createIsLink')
@@ -42418,7 +42337,7 @@ function createResolver (multicodec, EthObjClass, mapFromEthObject) {
     })
   }
 }
-},{"../util/createIsLink":454,"../util/createUtil":457,"async/waterfall":450}],456:[function(require,module,exports){
+},{"../util/createIsLink":322,"../util/createUtil":325,"async/waterfall":57}],324:[function(require,module,exports){
 (function (Buffer){
 'use strict'
 const each = require('async/each')
@@ -42529,8 +42448,8 @@ function createTrieResolver(multicodec, leafResolver){
 function nibbleToPath (data) {
   return data.map((num) => num.toString(16)).join('/')
 }
-}).call(this,{"isBuffer":require("../../../../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js")})
-},{"../../../../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js":1019,"./cidFromEthObj":452,"./cidFromHash":453,"./createIsLink":454,"./createResolver":455,"./createUtil":457,"./isExternalLink":458,"./toIpfsBlock":459,"async/asyncify":434,"async/each":435,"async/waterfall":450,"merkle-patricia-tree/trieNode":769,"rlp":947}],457:[function(require,module,exports){
+}).call(this,{"isBuffer":require("../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js")})
+},{"../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js":724,"./cidFromEthObj":320,"./cidFromHash":321,"./createIsLink":322,"./createResolver":323,"./createUtil":325,"./isExternalLink":326,"./toIpfsBlock":327,"async/asyncify":18,"async/each":21,"async/waterfall":57,"merkle-patricia-tree/trieNode":511,"rlp":655}],325:[function(require,module,exports){
 const cidFromEthObj = require('./cidFromEthObj')
 const asyncify = require('async/asyncify')
 
@@ -42544,13 +42463,13 @@ function createUtil (multicodec, EthObjClass) {
   }
 }
 
-},{"./cidFromEthObj":452,"async/asyncify":434}],458:[function(require,module,exports){
+},{"./cidFromEthObj":320,"async/asyncify":18}],326:[function(require,module,exports){
 module.exports = isExternalLink
 
 function isExternalLink (obj) {
   return Boolean(obj['/'])
 }
-},{}],459:[function(require,module,exports){
+},{}],327:[function(require,module,exports){
 const IpfsBlock = require('ipfs-block')
 const CID = require('cids')
 const multihashing = require('multihashing-async')
@@ -42567,27 +42486,9 @@ function toIpfsBlock (multicodec, value, callback) {
   })
 }
 
-},{"cids":61,"ipfs-block":240,"multihashing-async":794}],460:[function(require,module,exports){
-arguments[4][72][0].apply(exports,arguments)
-},{"./internal/initialParams":461,"./internal/setImmediate":464,"dup":72,"lodash/isObject":758}],461:[function(require,module,exports){
-arguments[4][80][0].apply(exports,arguments)
-},{"./slice":465,"dup":80}],462:[function(require,module,exports){
-arguments[4][82][0].apply(exports,arguments)
-},{"dup":82}],463:[function(require,module,exports){
-arguments[4][83][0].apply(exports,arguments)
-},{"dup":83}],464:[function(require,module,exports){
-arguments[4][85][0].apply(exports,arguments)
-},{"./slice":465,"_process":1024,"dup":85}],465:[function(require,module,exports){
-arguments[4][86][0].apply(exports,arguments)
-},{"dup":86}],466:[function(require,module,exports){
-arguments[4][88][0].apply(exports,arguments)
-},{"../asyncify":460,"dup":88}],467:[function(require,module,exports){
-arguments[4][186][0].apply(exports,arguments)
-},{"./internal/setImmediate":464,"dup":186}],468:[function(require,module,exports){
-arguments[4][90][0].apply(exports,arguments)
-},{"./internal/once":462,"./internal/onlyOnce":463,"./internal/slice":465,"./internal/wrapAsync":466,"dup":90,"lodash/isArray":753,"lodash/noop":762}],469:[function(require,module,exports){
-arguments[4][404][0].apply(exports,arguments)
-},{"./resolver.js":470,"./util.js":471,"dup":404}],470:[function(require,module,exports){
+},{"cids":102,"ipfs-block":226,"multihashing-async":533}],328:[function(require,module,exports){
+arguments[4][297][0].apply(exports,arguments)
+},{"./resolver.js":329,"./util.js":330,"dup":297}],329:[function(require,module,exports){
 (function (Buffer){
 'use strict'
 
@@ -42742,8 +42643,8 @@ exports.isLink = (block, path, callback) => {
   })
 }
 
-}).call(this,{"isBuffer":require("../../../../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js")})
-},{"../../../../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js":1019,"./util":471,"traverse":997}],471:[function(require,module,exports){
+}).call(this,{"isBuffer":require("../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js")})
+},{"../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js":724,"./util":330,"traverse":699}],330:[function(require,module,exports){
 (function (Buffer){
 'use strict'
 
@@ -42824,8 +42725,8 @@ exports.cid = (dagNode, callback) => {
   ], callback)
 }
 
-}).call(this,{"isBuffer":require("../../../../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js")})
-},{"../../../../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js":1019,"./resolver":470,"./util/commit":472,"./util/tag":473,"./util/tree":474,"./util/util":475,"async/setImmediate":467,"async/waterfall":468,"cids":61,"multihashing-async":794}],472:[function(require,module,exports){
+}).call(this,{"isBuffer":require("../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js")})
+},{"../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js":724,"./resolver":329,"./util/commit":331,"./util/tag":332,"./util/tree":333,"./util/util":334,"async/setImmediate":54,"async/waterfall":57,"cids":102,"multihashing-async":533}],331:[function(require,module,exports){
 (function (Buffer){
 'use strict'
 
@@ -42918,7 +42819,7 @@ exports.deserialize = (data, callback) => {
 }
 
 }).call(this,require("buffer").Buffer)
-},{"./util":475,"async/setImmediate":467,"buffer":1013,"smart-buffer":975}],473:[function(require,module,exports){
+},{"./util":334,"async/setImmediate":54,"buffer":718,"smart-buffer":681}],332:[function(require,module,exports){
 (function (Buffer){
 'use strict'
 
@@ -42987,7 +42888,7 @@ exports.deserialize = (data, callback) => {
 }
 
 }).call(this,require("buffer").Buffer)
-},{"./util":475,"async/setImmediate":467,"buffer":1013,"smart-buffer":975}],474:[function(require,module,exports){
+},{"./util":334,"async/setImmediate":54,"buffer":718,"smart-buffer":681}],333:[function(require,module,exports){
 'use strict'
 
 const setImmediate = require('async/setImmediate')
@@ -43045,7 +42946,7 @@ exports.deserialize = (data, callback) => {
   setImmediate(() => callback(null, res))
 }
 
-},{"./util":475,"async/setImmediate":467,"smart-buffer":975}],475:[function(require,module,exports){
+},{"./util":334,"async/setImmediate":54,"smart-buffer":681}],334:[function(require,module,exports){
 'use strict'
 
 const SmartBuffer = require('smart-buffer').SmartBuffer
@@ -43112,149 +43013,7 @@ exports.cidToSha = (cidBuf) => {
   return mh.digest
 }
 
-},{"cids":61,"multicodec/src/base-table":781,"multihashes":787,"multihashes/src/constants":786,"smart-buffer":975}],476:[function(require,module,exports){
-arguments[4][72][0].apply(exports,arguments)
-},{"./internal/initialParams":487,"./internal/setImmediate":493,"dup":72,"lodash/isObject":758}],477:[function(require,module,exports){
-'use strict';
-
-Object.defineProperty(exports, "__esModule", {
-    value: true
-});
-exports.default = doUntil;
-
-var _doWhilst = require('./doWhilst');
-
-var _doWhilst2 = _interopRequireDefault(_doWhilst);
-
-function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
-
-/**
- * Like ['doWhilst']{@link module:ControlFlow.doWhilst}, except the `test` is inverted. Note the
- * argument ordering differs from `until`.
- *
- * @name doUntil
- * @static
- * @memberOf module:ControlFlow
- * @method
- * @see [async.doWhilst]{@link module:ControlFlow.doWhilst}
- * @category Control Flow
- * @param {AsyncFunction} iteratee - An async function which is called each time
- * `test` fails. Invoked with (callback).
- * @param {Function} test - synchronous truth test to perform after each
- * execution of `iteratee`. Invoked with any non-error callback results of
- * `iteratee`.
- * @param {Function} [callback] - A callback which is called after the test
- * function has passed and repeated execution of `iteratee` has stopped. `callback`
- * will be passed an error and any arguments passed to the final `iteratee`'s
- * callback. Invoked with (err, [results]);
- */
-function doUntil(iteratee, test, callback) {
-    (0, _doWhilst2.default)(iteratee, function () {
-        return !test.apply(this, arguments);
-    }, callback);
-}
-module.exports = exports['default'];
-},{"./doWhilst":478}],478:[function(require,module,exports){
-'use strict';
-
-Object.defineProperty(exports, "__esModule", {
-    value: true
-});
-exports.default = doWhilst;
-
-var _noop = require('lodash/noop');
-
-var _noop2 = _interopRequireDefault(_noop);
-
-var _slice = require('./internal/slice');
-
-var _slice2 = _interopRequireDefault(_slice);
-
-var _onlyOnce = require('./internal/onlyOnce');
-
-var _onlyOnce2 = _interopRequireDefault(_onlyOnce);
-
-var _wrapAsync = require('./internal/wrapAsync');
-
-var _wrapAsync2 = _interopRequireDefault(_wrapAsync);
-
-function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
-
-/**
- * The post-check version of [`whilst`]{@link module:ControlFlow.whilst}. To reflect the difference in
- * the order of operations, the arguments `test` and `iteratee` are switched.
- *
- * `doWhilst` is to `whilst` as `do while` is to `while` in plain JavaScript.
- *
- * @name doWhilst
- * @static
- * @memberOf module:ControlFlow
- * @method
- * @see [async.whilst]{@link module:ControlFlow.whilst}
- * @category Control Flow
- * @param {AsyncFunction} iteratee - A function which is called each time `test`
- * passes. Invoked with (callback).
- * @param {Function} test - synchronous truth test to perform after each
- * execution of `iteratee`. Invoked with any non-error callback results of
- * `iteratee`.
- * @param {Function} [callback] - A callback which is called after the test
- * function has failed and repeated execution of `iteratee` has stopped.
- * `callback` will be passed an error and any arguments passed to the final
- * `iteratee`'s callback. Invoked with (err, [results]);
- */
-function doWhilst(iteratee, test, callback) {
-    callback = (0, _onlyOnce2.default)(callback || _noop2.default);
-    var _iteratee = (0, _wrapAsync2.default)(iteratee);
-    var next = function (err /*, ...args*/) {
-        if (err) return callback(err);
-        var args = (0, _slice2.default)(arguments, 1);
-        if (test.apply(this, args)) return _iteratee(next);
-        callback.apply(null, [null].concat(args));
-    };
-    _iteratee(next);
-}
-module.exports = exports['default'];
-},{"./internal/onlyOnce":491,"./internal/slice":494,"./internal/wrapAsync":495,"lodash/noop":762}],479:[function(require,module,exports){
-arguments[4][74][0].apply(exports,arguments)
-},{"./eachOfLimit":480,"./internal/breakLoop":482,"./internal/doLimit":483,"./internal/once":490,"./internal/onlyOnce":491,"./internal/wrapAsync":495,"dup":74,"lodash/isArrayLike":754,"lodash/noop":762}],480:[function(require,module,exports){
-arguments[4][75][0].apply(exports,arguments)
-},{"./internal/eachOfLimit":485,"./internal/wrapAsync":495,"dup":75}],481:[function(require,module,exports){
-arguments[4][200][0].apply(exports,arguments)
-},{"./eachOfLimit":480,"./internal/doLimit":483,"dup":200}],482:[function(require,module,exports){
-arguments[4][76][0].apply(exports,arguments)
-},{"dup":76}],483:[function(require,module,exports){
-arguments[4][77][0].apply(exports,arguments)
-},{"dup":77}],484:[function(require,module,exports){
-arguments[4][204][0].apply(exports,arguments)
-},{"../eachOf":479,"./wrapAsync":495,"dup":204}],485:[function(require,module,exports){
-arguments[4][78][0].apply(exports,arguments)
-},{"./breakLoop":482,"./iterator":488,"./once":490,"./onlyOnce":491,"dup":78,"lodash/noop":762}],486:[function(require,module,exports){
-arguments[4][79][0].apply(exports,arguments)
-},{"dup":79}],487:[function(require,module,exports){
-arguments[4][80][0].apply(exports,arguments)
-},{"./slice":494,"dup":80}],488:[function(require,module,exports){
-arguments[4][81][0].apply(exports,arguments)
-},{"./getIterator":486,"dup":81,"lodash/isArrayLike":754,"lodash/keys":761}],489:[function(require,module,exports){
-arguments[4][210][0].apply(exports,arguments)
-},{"./wrapAsync":495,"dup":210,"lodash/noop":762}],490:[function(require,module,exports){
-arguments[4][82][0].apply(exports,arguments)
-},{"dup":82}],491:[function(require,module,exports){
-arguments[4][83][0].apply(exports,arguments)
-},{"dup":83}],492:[function(require,module,exports){
-arguments[4][84][0].apply(exports,arguments)
-},{"./slice":494,"./wrapAsync":495,"dup":84,"lodash/isArrayLike":754,"lodash/noop":762}],493:[function(require,module,exports){
-arguments[4][85][0].apply(exports,arguments)
-},{"./slice":494,"_process":1024,"dup":85}],494:[function(require,module,exports){
-arguments[4][86][0].apply(exports,arguments)
-},{"dup":86}],495:[function(require,module,exports){
-arguments[4][88][0].apply(exports,arguments)
-},{"../asyncify":476,"dup":88}],496:[function(require,module,exports){
-arguments[4][219][0].apply(exports,arguments)
-},{"./internal/doParallel":484,"./internal/map":489,"dup":219}],497:[function(require,module,exports){
-arguments[4][221][0].apply(exports,arguments)
-},{"./eachOfSeries":481,"./internal/parallel":492,"dup":221}],498:[function(require,module,exports){
-arguments[4][90][0].apply(exports,arguments)
-},{"./internal/once":490,"./internal/onlyOnce":491,"./internal/slice":494,"./internal/wrapAsync":495,"dup":90,"lodash/isArray":753,"lodash/noop":762}],499:[function(require,module,exports){
+},{"cids":102,"multicodec/src/base-table":523,"multihashes":529,"multihashes/src/constants":528,"smart-buffer":681}],335:[function(require,module,exports){
 'use strict'
 
 const Block = require('ipfs-block')
@@ -43675,7 +43434,7 @@ IPLDResolver.inMemory = function (callback) {
 
 module.exports = IPLDResolver
 
-},{"async/doUntil":477,"async/map":496,"async/series":497,"async/waterfall":498,"cids":61,"interface-datastore":190,"ipfs-block":240,"ipfs-block-service":238,"ipfs-repo":277,"ipld-dag-cbor":404,"ipld-dag-pb":424,"ipld-eth-star":451,"ipld-git":469,"path":1022,"pull-defer":874,"pull-stream":892,"pull-traverse":924}],500:[function(require,module,exports){
+},{"async/doUntil":19,"async/map":49,"async/series":53,"async/waterfall":57,"cids":102,"interface-datastore":203,"ipfs-block":226,"ipfs-block-service":224,"ipfs-repo":232,"ipld-dag-cbor":297,"ipld-dag-pb":309,"ipld-eth-star":319,"ipld-git":328,"path":727,"pull-defer":582,"pull-stream":600,"pull-traverse":632}],336:[function(require,module,exports){
 module.exports = isCircular
 
 /**
@@ -43721,7 +43480,7 @@ CircularChecker.prototype.isCircular = function (obj, seen) {
   return false
 }
 
-},{}],501:[function(require,module,exports){
+},{}],337:[function(require,module,exports){
 /**
  * Returns a `Boolean` on whether or not the a `String` starts with '0x'
  * @param {String} str the string input value
@@ -43736,7 +43495,13 @@ module.exports = function isHexPrefixed(str) {
   return str.slice(0, 2) === '0x';
 }
 
-},{}],502:[function(require,module,exports){
+},{}],338:[function(require,module,exports){
+module.exports = isPromise;
+
+function isPromise(obj) {
+  return obj && typeof obj.then === 'function';
+}
+},{}],339:[function(require,module,exports){
 'use strict';
 
 var isStream = module.exports = function (stream) {
@@ -43759,9 +43524,9 @@ isStream.transform = function (stream) {
 	return isStream.duplex(stream) && typeof stream._transform === 'function' && typeof stream._transformState === 'object';
 };
 
-},{}],503:[function(require,module,exports){
-arguments[4][162][0].apply(exports,arguments)
-},{"dup":162}],504:[function(require,module,exports){
+},{}],340:[function(require,module,exports){
+arguments[4][181][0].apply(exports,arguments)
+},{"dup":181}],341:[function(require,module,exports){
 (function (process,global){
 /**
  * [js-sha3]{@link https://github.com/emn178/js-sha3}
@@ -44387,11 +44152,11 @@ arguments[4][162][0].apply(exports,arguments)
 })();
 
 }).call(this,require('_process'),typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"_process":1024}],505:[function(require,module,exports){
+},{"_process":729}],342:[function(require,module,exports){
 'use strict'
 module.exports = require('./lib/api')(require('./lib/keccak'))
 
-},{"./lib/api":506,"./lib/keccak":510}],506:[function(require,module,exports){
+},{"./lib/api":343,"./lib/keccak":347}],343:[function(require,module,exports){
 'use strict'
 var createKeccak = require('./keccak')
 var createShake = require('./shake')
@@ -44421,7 +44186,7 @@ module.exports = function (KeccakState) {
   }
 }
 
-},{"./keccak":507,"./shake":508}],507:[function(require,module,exports){
+},{"./keccak":344,"./shake":345}],344:[function(require,module,exports){
 'use strict'
 var Buffer = require('safe-buffer').Buffer
 var Transform = require('stream').Transform
@@ -44507,7 +44272,7 @@ module.exports = function (KeccakState) {
   return Keccak
 }
 
-},{"inherits":181,"safe-buffer":948,"stream":1043}],508:[function(require,module,exports){
+},{"inherits":200,"safe-buffer":656,"stream":748}],345:[function(require,module,exports){
 'use strict'
 var Buffer = require('safe-buffer').Buffer
 var Transform = require('stream').Transform
@@ -44584,7 +44349,7 @@ module.exports = function (KeccakState) {
   return Shake
 }
 
-},{"inherits":181,"safe-buffer":948,"stream":1043}],509:[function(require,module,exports){
+},{"inherits":200,"safe-buffer":656,"stream":748}],346:[function(require,module,exports){
 'use strict'
 var P1600_ROUND_CONSTANTS = [1, 0, 32898, 0, 32906, 2147483648, 2147516416, 2147483648, 32907, 0, 2147483649, 0, 2147516545, 2147483648, 32777, 2147483648, 138, 0, 136, 0, 2147516425, 0, 2147483658, 0, 2147516555, 0, 139, 2147483648, 32905, 2147483648, 32771, 2147483648, 32770, 2147483648, 128, 2147483648, 32778, 0, 2147483658, 2147483648, 2147516545, 2147483648, 32896, 2147483648, 2147483649, 0, 2147516424, 2147483648]
 
@@ -44773,7 +44538,7 @@ exports.p1600 = function (s) {
   }
 }
 
-},{}],510:[function(require,module,exports){
+},{}],347:[function(require,module,exports){
 'use strict'
 var Buffer = require('safe-buffer').Buffer
 var keccakState = require('./keccak-state-unroll')
@@ -44845,10 +44610,10 @@ Keccak.prototype.copy = function (dest) {
 
 module.exports = Keccak
 
-},{"./keccak-state-unroll":509,"safe-buffer":948}],511:[function(require,module,exports){
+},{"./keccak-state-unroll":346,"safe-buffer":656}],348:[function(require,module,exports){
 module.exports = require('browserify-sha3').SHA3Hash
 
-},{"browserify-sha3":56}],512:[function(require,module,exports){
+},{"browserify-sha3":97}],349:[function(require,module,exports){
 /* This program is free software. It comes without any warranty, to
      * the extent permitted by applicable law. You can redistribute it
      * and/or modify it under the terms of the Do What The Fuck You Want
@@ -44902,7 +44667,7 @@ function leftPad (str, len, ch) {
   return pad + str;
 }
 
-},{}],513:[function(require,module,exports){
+},{}],350:[function(require,module,exports){
 var encodings = require('./lib/encodings');
 
 module.exports = Codec;
@@ -45010,7 +44775,7 @@ Codec.prototype.valueAsBuffer = function(opts){
 };
 
 
-},{"./lib/encodings":514}],514:[function(require,module,exports){
+},{"./lib/encodings":351}],351:[function(require,module,exports){
 (function (Buffer){
 exports.utf8 = exports['utf-8'] = {
   encode: function(data){
@@ -45090,7 +44855,7 @@ function isBinary(data){
 }
 
 }).call(this,require("buffer").Buffer)
-},{"buffer":1013}],515:[function(require,module,exports){
+},{"buffer":718}],352:[function(require,module,exports){
 /* Copyright (c) 2012-2017 LevelUP contributors
  * See list at <https://github.com/rvagg/node-levelup#contributing>
  * MIT License
@@ -45114,7 +44879,7 @@ module.exports = {
   , EncodingError       : createError('EncodingError', LevelUPError)
 }
 
-},{"errno":147}],516:[function(require,module,exports){
+},{"errno":166}],353:[function(require,module,exports){
 var inherits = require('inherits');
 var Readable = require('readable-stream').Readable;
 var extend = require('xtend');
@@ -45172,12 +44937,12 @@ ReadStream.prototype._cleanup = function(){
 };
 
 
-},{"inherits":181,"level-errors":515,"readable-stream":523,"xtend":1008}],517:[function(require,module,exports){
+},{"inherits":200,"level-errors":352,"readable-stream":360,"xtend":713}],354:[function(require,module,exports){
 module.exports = Array.isArray || function (arr) {
   return Object.prototype.toString.call(arr) == '[object Array]';
 };
 
-},{}],518:[function(require,module,exports){
+},{}],355:[function(require,module,exports){
 (function (process){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -45270,7 +45035,7 @@ function forEach (xs, f) {
 }
 
 }).call(this,require('_process'))
-},{"./_stream_readable":520,"./_stream_writable":522,"_process":1024,"core-util-is":66,"inherits":181}],519:[function(require,module,exports){
+},{"./_stream_readable":357,"./_stream_writable":359,"_process":729,"core-util-is":107,"inherits":200}],356:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -45318,7 +45083,7 @@ PassThrough.prototype._transform = function(chunk, encoding, cb) {
   cb(null, chunk);
 };
 
-},{"./_stream_transform":521,"core-util-is":66,"inherits":181}],520:[function(require,module,exports){
+},{"./_stream_transform":358,"core-util-is":107,"inherits":200}],357:[function(require,module,exports){
 (function (process){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -46273,7 +46038,7 @@ function indexOf (xs, x) {
 }
 
 }).call(this,require('_process'))
-},{"./_stream_duplex":518,"_process":1024,"buffer":1013,"core-util-is":66,"events":1015,"inherits":181,"isarray":517,"stream":1043,"string_decoder/":524,"util":1012}],521:[function(require,module,exports){
+},{"./_stream_duplex":355,"_process":729,"buffer":718,"core-util-is":107,"events":720,"inherits":200,"isarray":354,"stream":748,"string_decoder/":361,"util":717}],358:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -46484,7 +46249,7 @@ function done(stream, er) {
   return stream.push(null);
 }
 
-},{"./_stream_duplex":518,"core-util-is":66,"inherits":181}],522:[function(require,module,exports){
+},{"./_stream_duplex":355,"core-util-is":107,"inherits":200}],359:[function(require,module,exports){
 (function (process){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -46965,7 +46730,7 @@ function endWritable(stream, state, cb) {
 }
 
 }).call(this,require('_process'))
-},{"./_stream_duplex":518,"_process":1024,"buffer":1013,"core-util-is":66,"inherits":181,"stream":1043}],523:[function(require,module,exports){
+},{"./_stream_duplex":355,"_process":729,"buffer":718,"core-util-is":107,"inherits":200,"stream":748}],360:[function(require,module,exports){
 (function (process){
 exports = module.exports = require('./lib/_stream_readable.js');
 exports.Stream = require('stream');
@@ -46979,7 +46744,7 @@ if (!process.browser && process.env.READABLE_STREAM === 'disable') {
 }
 
 }).call(this,require('_process'))
-},{"./lib/_stream_duplex.js":518,"./lib/_stream_passthrough.js":519,"./lib/_stream_readable.js":520,"./lib/_stream_transform.js":521,"./lib/_stream_writable.js":522,"_process":1024,"stream":1043}],524:[function(require,module,exports){
+},{"./lib/_stream_duplex.js":355,"./lib/_stream_passthrough.js":356,"./lib/_stream_readable.js":357,"./lib/_stream_transform.js":358,"./lib/_stream_writable.js":359,"_process":729,"stream":748}],361:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -47202,7 +46967,7 @@ function base64DetectIncompleteChar(buffer) {
   this.charLength = this.charReceived ? 3 : 0;
 }
 
-},{"buffer":1013}],525:[function(require,module,exports){
+},{"buffer":718}],362:[function(require,module,exports){
 (function (process,Buffer){
 module.exports = Level
 
@@ -47504,7 +47269,7 @@ Level.destroy = function(db, callback) {
 }
 
 }).call(this,require('_process'),require("buffer").Buffer)
-},{"./iterator":526,"_process":1024,"abstract-leveldown":530,"buffer":1013,"util":1050,"xtend":1008}],526:[function(require,module,exports){
+},{"./iterator":363,"_process":729,"abstract-leveldown":367,"buffer":718,"util":755,"xtend":713}],363:[function(require,module,exports){
 (function (process,Buffer){
 var util = require('util')
 var AbstractIterator  = require('abstract-leveldown').AbstractIterator
@@ -47691,7 +47456,7 @@ Iterator.prototype._next = function(callback) {
 }
 
 }).call(this,require('_process'),require("buffer").Buffer)
-},{"_process":1024,"abstract-leveldown":530,"buffer":1013,"idb-readable-stream":178,"ltgt":765,"stream":1043,"util":1050,"xtend":1008}],527:[function(require,module,exports){
+},{"_process":729,"abstract-leveldown":367,"buffer":718,"idb-readable-stream":197,"ltgt":507,"stream":748,"util":755,"xtend":713}],364:[function(require,module,exports){
 (function (process){
 /* Copyright (c) 2013 Rod Vagg, MIT License */
 
@@ -47774,7 +47539,7 @@ AbstractChainedBatch.prototype.write = function (options, callback) {
 
 module.exports = AbstractChainedBatch
 }).call(this,require('_process'))
-},{"_process":1024}],528:[function(require,module,exports){
+},{"_process":729}],365:[function(require,module,exports){
 (function (process){
 /* Copyright (c) 2013 Rod Vagg, MIT License */
 
@@ -47827,7 +47592,7 @@ AbstractIterator.prototype.end = function (callback) {
 module.exports = AbstractIterator
 
 }).call(this,require('_process'))
-},{"_process":1024}],529:[function(require,module,exports){
+},{"_process":729}],366:[function(require,module,exports){
 (function (Buffer,process){
 /* Copyright (c) 2013 Rod Vagg, MIT License */
 
@@ -48102,12 +47867,12 @@ AbstractLevelDOWN.prototype._checkKey = function (obj, type) {
 
 module.exports = AbstractLevelDOWN
 
-}).call(this,{"isBuffer":require("../../../../../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js")},require('_process'))
-},{"../../../../../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js":1019,"./abstract-chained-batch":527,"./abstract-iterator":528,"_process":1024,"xtend":1008}],530:[function(require,module,exports){
-arguments[4][109][0].apply(exports,arguments)
-},{"./abstract-chained-batch":527,"./abstract-iterator":528,"./abstract-leveldown":529,"./is-leveldown":531,"dup":109}],531:[function(require,module,exports){
-arguments[4][110][0].apply(exports,arguments)
-},{"./abstract-leveldown":529,"dup":110}],532:[function(require,module,exports){
+}).call(this,{"isBuffer":require("../../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js")},require('_process'))
+},{"../../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js":724,"./abstract-chained-batch":364,"./abstract-iterator":365,"_process":729,"xtend":713}],367:[function(require,module,exports){
+arguments[4][130][0].apply(exports,arguments)
+},{"./abstract-chained-batch":364,"./abstract-iterator":365,"./abstract-leveldown":366,"./is-leveldown":368,"dup":130}],368:[function(require,module,exports){
+arguments[4][131][0].apply(exports,arguments)
+},{"./abstract-leveldown":366,"dup":131}],369:[function(require,module,exports){
 /* Copyright (c) 2012-2016 LevelUP contributors
  * See list at <https://github.com/level/levelup#contributing>
  * MIT License
@@ -48192,7 +47957,7 @@ Batch.prototype.write = function (callback) {
 
 module.exports = Batch
 
-},{"./util":534,"level-errors":515}],533:[function(require,module,exports){
+},{"./util":371,"level-errors":352}],370:[function(require,module,exports){
 (function (process){
 /* Copyright (c) 2012-2016 LevelUP contributors
  * See list at <https://github.com/level/levelup#contributing>
@@ -48559,7 +48324,7 @@ module.exports.repair = deprecate(
 )
 
 }).call(this,require('_process'))
-},{"./batch":532,"./leveldown":1012,"./util":534,"_process":1024,"deferred-leveldown":105,"events":1015,"level-codec":513,"level-errors":515,"level-iterator-stream":516,"prr":868,"util":1050,"xtend":1008}],534:[function(require,module,exports){
+},{"./batch":369,"./leveldown":717,"./util":371,"_process":729,"deferred-leveldown":126,"events":720,"level-codec":350,"level-errors":352,"level-iterator-stream":353,"prr":576,"util":755,"xtend":713}],371:[function(require,module,exports){
 /* Copyright (c) 2012-2016 LevelUP contributors
  * See list at <https://github.com/level/levelup#contributing>
  * MIT License
@@ -48595,13 +48360,7 @@ module.exports = {
   isDefined: isDefined
 }
 
-},{}],535:[function(require,module,exports){
-arguments[4][85][0].apply(exports,arguments)
-},{"./slice":536,"_process":1024,"dup":85}],536:[function(require,module,exports){
-arguments[4][86][0].apply(exports,arguments)
-},{"dup":86}],537:[function(require,module,exports){
-arguments[4][186][0].apply(exports,arguments)
-},{"./internal/setImmediate":535,"dup":186}],538:[function(require,module,exports){
+},{}],372:[function(require,module,exports){
 'use strict'
 
 const secp256k1 = require('secp256k1')
@@ -48692,7 +48451,7 @@ module.exports = (randomBytes) => {
   }
 }
 
-},{"async/setImmediate":537,"multihashing-async":794,"secp256k1":950}],539:[function(require,module,exports){
+},{"async/setImmediate":54,"multihashing-async":533,"secp256k1":658}],373:[function(require,module,exports){
 'use strict'
 
 const multihashing = require('multihashing-async')
@@ -48812,23 +48571,7 @@ module.exports = (keysProtobuf, randomBytes, crypto) => {
   }
 }
 
-},{"./crypto":538,"multihashing-async":794}],540:[function(require,module,exports){
-arguments[4][72][0].apply(exports,arguments)
-},{"./internal/initialParams":541,"./internal/setImmediate":543,"dup":72,"lodash/isObject":758}],541:[function(require,module,exports){
-arguments[4][80][0].apply(exports,arguments)
-},{"./slice":544,"dup":80}],542:[function(require,module,exports){
-arguments[4][83][0].apply(exports,arguments)
-},{"dup":83}],543:[function(require,module,exports){
-arguments[4][85][0].apply(exports,arguments)
-},{"./slice":544,"_process":1024,"dup":85}],544:[function(require,module,exports){
-arguments[4][86][0].apply(exports,arguments)
-},{"dup":86}],545:[function(require,module,exports){
-arguments[4][88][0].apply(exports,arguments)
-},{"../asyncify":540,"dup":88}],546:[function(require,module,exports){
-arguments[4][186][0].apply(exports,arguments)
-},{"./internal/setImmediate":543,"dup":186}],547:[function(require,module,exports){
-arguments[4][91][0].apply(exports,arguments)
-},{"./internal/onlyOnce":542,"./internal/slice":544,"./internal/wrapAsync":545,"dup":91,"lodash/noop":762}],548:[function(require,module,exports){
+},{"./crypto":372,"multihashing-async":533}],374:[function(require,module,exports){
 'use strict'
 
 const crypto = require('browserify-aes')
@@ -48838,7 +48581,7 @@ module.exports = {
   createDecipheriv: crypto.createDecipheriv
 }
 
-},{"browserify-aes":42}],549:[function(require,module,exports){
+},{"browserify-aes":83}],375:[function(require,module,exports){
 'use strict'
 
 const ciphers = require('./ciphers')
@@ -48870,7 +48613,7 @@ exports.create = function (key, iv, callback) {
   callback(null, res)
 }
 
-},{"./ciphers":548}],550:[function(require,module,exports){
+},{"./ciphers":374}],376:[function(require,module,exports){
 (function (Buffer){
 'use strict'
 
@@ -48913,7 +48656,7 @@ exports.create = function (hashType, secret, callback) {
 }
 
 }).call(this,require("buffer").Buffer)
-},{"../nodeify":563,"../webcrypto.js":566,"./lengths":551,"buffer":1013}],551:[function(require,module,exports){
+},{"../nodeify":389,"../webcrypto.js":392,"./lengths":377,"buffer":718}],377:[function(require,module,exports){
 'use strict'
 
 module.exports = {
@@ -48922,7 +48665,7 @@ module.exports = {
   SHA512: 64
 }
 
-},{}],552:[function(require,module,exports){
+},{}],378:[function(require,module,exports){
 'use strict'
 
 const hmac = require('./hmac')
@@ -48936,7 +48679,7 @@ exports.hmac = hmac
 exports.keys = keys
 exports.randomBytes = require('./random-bytes')
 
-},{"./aes":549,"./hmac":550,"./keys":557,"./random-bytes":564}],553:[function(require,module,exports){
+},{"./aes":375,"./hmac":376,"./keys":383,"./random-bytes":390}],379:[function(require,module,exports){
 (function (Buffer){
 'use strict'
 
@@ -49067,7 +48810,7 @@ function unmarshalPrivateKey (curve, key) {
 }
 
 }).call(this,require("buffer").Buffer)
-},{"../nodeify":563,"../util":565,"../webcrypto.js":566,"asn1.js":4,"buffer":1013}],554:[function(require,module,exports){
+},{"../nodeify":389,"../util":391,"../webcrypto.js":392,"asn1.js":4,"buffer":718}],380:[function(require,module,exports){
 (function (Buffer){
 'use strict'
 
@@ -49234,7 +48977,7 @@ module.exports = {
 }
 
 }).call(this,require("buffer").Buffer)
-},{"./ed25519":555,"./keys.proto":559,"buffer":1013,"multihashing-async":794,"protons":867}],555:[function(require,module,exports){
+},{"./ed25519":381,"./keys.proto":385,"buffer":718,"multihashing-async":533,"protons":575}],381:[function(require,module,exports){
 (function (Buffer){
 'use strict'
 
@@ -49284,7 +49027,7 @@ exports.hashAndVerify = function (key, sig, msg, callback) {
 }
 
 }).call(this,require("buffer").Buffer)
-},{"async/setImmediate":546,"buffer":1013,"tweetnacl":998}],556:[function(require,module,exports){
+},{"async/setImmediate":54,"buffer":718,"tweetnacl":700}],382:[function(require,module,exports){
 'use strict'
 
 const ecdh = require('./ecdh')
@@ -49297,7 +49040,7 @@ module.exports = (curve, callback) => {
   ecdh.generateEphmeralKeyPair(curve, callback)
 }
 
-},{"./ecdh":553}],557:[function(require,module,exports){
+},{"./ecdh":379}],383:[function(require,module,exports){
 'use strict'
 
 const protobuf = require('protons')
@@ -49410,7 +49153,7 @@ exports.marshalPrivateKey = (key, type) => {
   return key.bytes
 }
 
-},{"../random-bytes":564,"./ed25519-class":554,"./ephemeral-keys":556,"./key-stretcher":558,"./keys.proto":559,"./rsa-class":561,"libp2p-crypto-secp256k1":539,"protons":867}],558:[function(require,module,exports){
+},{"../random-bytes":390,"./ed25519-class":380,"./ephemeral-keys":382,"./key-stretcher":384,"./keys.proto":385,"./rsa-class":387,"libp2p-crypto-secp256k1":373,"protons":575}],384:[function(require,module,exports){
 (function (Buffer){
 'use strict'
 
@@ -49522,7 +49265,7 @@ module.exports = (cipherType, hash, secret, callback) => {
 }
 
 }).call(this,require("buffer").Buffer)
-},{"../hmac":550,"async/whilst":547,"buffer":1013}],559:[function(require,module,exports){
+},{"../hmac":376,"async/whilst":58,"buffer":718}],385:[function(require,module,exports){
 'use strict'
 
 module.exports = `enum KeyType {
@@ -49538,7 +49281,7 @@ message PrivateKey {
   required KeyType Type = 1;
   required bytes Data = 2;
 }`
-},{}],560:[function(require,module,exports){
+},{}],386:[function(require,module,exports){
 (function (Buffer){
 'use strict'
 
@@ -49661,7 +49404,7 @@ function derivePublicFromPrivate (jwKey) {
 }
 
 }).call(this,require("buffer").Buffer)
-},{"../nodeify":563,"../webcrypto.js":566,"./rsa-utils":562,"buffer":1013}],561:[function(require,module,exports){
+},{"../nodeify":389,"../webcrypto.js":392,"./rsa-utils":388,"buffer":718}],387:[function(require,module,exports){
 'use strict'
 
 const multihashing = require('multihashing-async')
@@ -49796,7 +49539,7 @@ module.exports = {
   generateKeyPair
 }
 
-},{"./keys.proto":559,"./rsa":560,"multihashing-async":794,"protons":867}],562:[function(require,module,exports){
+},{"./keys.proto":385,"./rsa":386,"multihashing-async":533,"protons":575}],388:[function(require,module,exports){
 'use strict'
 
 const asn1 = require('asn1.js')
@@ -49912,7 +49655,7 @@ exports.jwkToPkix = function (jwk) {
   }, 'der')
 }
 
-},{"./../util":565,"asn1.js":4}],563:[function(require,module,exports){
+},{"./../util":391,"asn1.js":4}],389:[function(require,module,exports){
 'use strict'
 
 // Based on npmjs.com/nodeify but without additional `nextTick` calls
@@ -49925,7 +49668,7 @@ module.exports = function nodeify (promise, cb) {
   })
 }
 
-},{}],564:[function(require,module,exports){
+},{}],390:[function(require,module,exports){
 'use strict'
 
 const rsa = require('./keys/rsa')
@@ -49940,7 +49683,7 @@ function randomBytes (number) {
 
 module.exports = randomBytes
 
-},{"./keys/rsa":560}],565:[function(require,module,exports){
+},{"./keys/rsa":386}],391:[function(require,module,exports){
 (function (Buffer){
 'use strict'
 
@@ -49964,7 +49707,7 @@ exports.toBn = function toBn (str) {
 }
 
 }).call(this,require("buffer").Buffer)
-},{"asn1.js":4,"buffer":1013}],566:[function(require,module,exports){
+},{"asn1.js":4,"buffer":718}],392:[function(require,module,exports){
 /* global self */
 
 'use strict'
@@ -49982,41 +49725,11 @@ module.exports = () => {
   throw new Error('Please use an environment with crypto support')
 }
 
-},{"webcrypto-shim":1005}],567:[function(require,module,exports){
-arguments[4][72][0].apply(exports,arguments)
-},{"./internal/initialParams":575,"./internal/setImmediate":579,"dup":72,"lodash/isObject":758}],568:[function(require,module,exports){
-arguments[4][73][0].apply(exports,arguments)
-},{"./eachOf":569,"./internal/withoutIndex":581,"./internal/wrapAsync":582,"dup":73}],569:[function(require,module,exports){
-arguments[4][74][0].apply(exports,arguments)
-},{"./eachOfLimit":570,"./internal/breakLoop":571,"./internal/doLimit":572,"./internal/once":577,"./internal/onlyOnce":578,"./internal/wrapAsync":582,"dup":74,"lodash/isArrayLike":754,"lodash/noop":762}],570:[function(require,module,exports){
-arguments[4][75][0].apply(exports,arguments)
-},{"./internal/eachOfLimit":573,"./internal/wrapAsync":582,"dup":75}],571:[function(require,module,exports){
-arguments[4][76][0].apply(exports,arguments)
-},{"dup":76}],572:[function(require,module,exports){
-arguments[4][77][0].apply(exports,arguments)
-},{"dup":77}],573:[function(require,module,exports){
-arguments[4][78][0].apply(exports,arguments)
-},{"./breakLoop":571,"./iterator":576,"./once":577,"./onlyOnce":578,"dup":78,"lodash/noop":762}],574:[function(require,module,exports){
-arguments[4][79][0].apply(exports,arguments)
-},{"dup":79}],575:[function(require,module,exports){
-arguments[4][80][0].apply(exports,arguments)
-},{"./slice":580,"dup":80}],576:[function(require,module,exports){
-arguments[4][81][0].apply(exports,arguments)
-},{"./getIterator":574,"dup":81,"lodash/isArrayLike":754,"lodash/keys":761}],577:[function(require,module,exports){
-arguments[4][82][0].apply(exports,arguments)
-},{"dup":82}],578:[function(require,module,exports){
-arguments[4][83][0].apply(exports,arguments)
-},{"dup":83}],579:[function(require,module,exports){
-arguments[4][85][0].apply(exports,arguments)
-},{"./slice":580,"_process":1024,"dup":85}],580:[function(require,module,exports){
-arguments[4][86][0].apply(exports,arguments)
-},{"dup":86}],581:[function(require,module,exports){
-arguments[4][87][0].apply(exports,arguments)
-},{"dup":87}],582:[function(require,module,exports){
-arguments[4][88][0].apply(exports,arguments)
-},{"../asyncify":567,"dup":88}],583:[function(require,module,exports){
-arguments[4][186][0].apply(exports,arguments)
-},{"./internal/setImmediate":579,"dup":186}],584:[function(require,module,exports){
+},{"webcrypto-shim":710}],393:[function(require,module,exports){
+arguments[4][208][0].apply(exports,arguments)
+},{"./debug":394,"_process":729,"dup":208}],394:[function(require,module,exports){
+arguments[4][209][0].apply(exports,arguments)
+},{"dup":209,"ms":514}],395:[function(require,module,exports){
 'use strict'
 
 const debug = require('debug')
@@ -50029,7 +49742,7 @@ module.exports = {
   multicodec: '/floodsub/1.0.0'
 }
 
-},{"debug":101}],585:[function(require,module,exports){
+},{"debug":393}],396:[function(require,module,exports){
 'use strict'
 
 const EventEmitter = require('events')
@@ -50372,7 +50085,7 @@ class FloodSub extends EventEmitter {
 
 module.exports = FloodSub
 
-},{"./config":584,"./message":586,"./peer":589,"./utils":590,"assert":1010,"async/each":568,"async/setImmediate":583,"events":1015,"lodash.values":727,"pull-length-prefixed":881,"pull-stream":892,"safe-buffer":948,"time-cache":995}],586:[function(require,module,exports){
+},{"./config":395,"./message":397,"./peer":400,"./utils":401,"assert":715,"async/each":21,"async/setImmediate":54,"events":720,"lodash.values":469,"pull-length-prefixed":589,"pull-stream":600,"safe-buffer":656,"time-cache":697}],397:[function(require,module,exports){
 'use strict'
 
 const protons = require('protons')
@@ -50384,7 +50097,7 @@ exports = module.exports
 exports.rpc = rpcProto
 exports.td = topicDescriptorProto
 
-},{"./rpc.proto.js":587,"./topic-descriptor.proto.js":588,"protons":867}],587:[function(require,module,exports){
+},{"./rpc.proto.js":398,"./topic-descriptor.proto.js":399,"protons":575}],398:[function(require,module,exports){
 'use strict'
 module.exports = `
 message RPC {
@@ -50404,7 +50117,7 @@ message RPC {
   }
 }`
 
-},{}],588:[function(require,module,exports){
+},{}],399:[function(require,module,exports){
 'use strict'
 module.exports = `
 // topicCID = cid(merkledag_protobuf(topicDescriptor)); (not the topic.name)
@@ -50436,7 +50149,7 @@ message TopicDescriptor {
   }
 }`
 
-},{}],589:[function(require,module,exports){
+},{}],400:[function(require,module,exports){
 'use strict'
 
 const lp = require('pull-length-prefixed')
@@ -50611,7 +50324,7 @@ class Peer {
 
 module.exports = Peer
 
-},{"./message":586,"async/setImmediate":583,"pull-length-prefixed":881,"pull-pushable":887,"pull-stream":892}],590:[function(require,module,exports){
+},{"./message":397,"async/setImmediate":54,"pull-length-prefixed":589,"pull-pushable":595,"pull-stream":600}],401:[function(require,module,exports){
 'use strict'
 
 const crypto = require('libp2p-crypto')
@@ -50681,7 +50394,7 @@ exports.ensureArray = (maybeArray) => {
   return maybeArray
 }
 
-},{"libp2p-crypto":552}],591:[function(require,module,exports){
+},{"libp2p-crypto":378}],402:[function(require,module,exports){
 'use strict'
 const PeerInfo = require('peer-info')
 const PeerId = require('peer-id')
@@ -50742,7 +50455,7 @@ function hasObservedAddr (input) {
   return input.observedAddr && input.observedAddr.length > 0
 }
 
-},{"./message":594,"multiaddr":775,"peer-id":849,"peer-info":850,"pull-length-prefixed":881,"pull-stream":892}],592:[function(require,module,exports){
+},{"./message":405,"multiaddr":517,"peer-id":558,"peer-info":559,"pull-length-prefixed":589,"pull-stream":600}],403:[function(require,module,exports){
 'use strict'
 
 exports = module.exports
@@ -50750,7 +50463,7 @@ exports.multicodec = '/ipfs/id/1.0.0'
 exports.listener = require('./listener')
 exports.dialer = require('./dialer')
 
-},{"./dialer":591,"./listener":593}],593:[function(require,module,exports){
+},{"./dialer":402,"./listener":404}],404:[function(require,module,exports){
 (function (Buffer){
 'use strict'
 
@@ -50787,7 +50500,7 @@ module.exports = (conn, pInfoSelf) => {
 }
 
 }).call(this,require("buffer").Buffer)
-},{"./message":594,"buffer":1013,"pull-length-prefixed":881,"pull-stream":892}],594:[function(require,module,exports){
+},{"./message":405,"buffer":718,"pull-length-prefixed":589,"pull-stream":600}],405:[function(require,module,exports){
 'use strict'
 
 const protons = require('protons')
@@ -50819,13 +50532,7 @@ message Identify {
 
 module.exports = protons(schema).Identify
 
-},{"protons":867}],595:[function(require,module,exports){
-arguments[4][85][0].apply(exports,arguments)
-},{"./slice":596,"_process":1024,"dup":85}],596:[function(require,module,exports){
-arguments[4][86][0].apply(exports,arguments)
-},{"dup":86}],597:[function(require,module,exports){
-arguments[4][186][0].apply(exports,arguments)
-},{"./internal/setImmediate":595,"dup":186}],598:[function(require,module,exports){
+},{"protons":575}],406:[function(require,module,exports){
 'use strict'
 
 const Multiplex = require('multiplex')
@@ -50858,12 +50565,12 @@ exports.multicodec = MULTIPLEX_CODEC
 exports.dialer = (conn) => create(conn, false)
 exports.listener = (conn) => create(conn, true)
 
-},{"./multiplex-codec":599,"./muxer":600,"multiplex":803,"pull-stream-to-stream":891,"pump":934}],599:[function(require,module,exports){
+},{"./multiplex-codec":407,"./muxer":408,"multiplex":540,"pull-stream-to-stream":599,"pump":642}],407:[function(require,module,exports){
 'use strict'
 
 module.exports = '/mplex/6.7.0'
 
-},{}],600:[function(require,module,exports){
+},{}],408:[function(require,module,exports){
 'use strict'
 
 const EventEmitter = require('events').EventEmitter
@@ -50934,7 +50641,7 @@ function catchError (stream) {
   }
 }
 
-},{"./multiplex-codec":599,"async/setImmediate":597,"events":1015,"interface-connection":183,"pull-catch":872,"pull-stream":892,"stream-to-pull-stream":992}],601:[function(require,module,exports){
+},{"./multiplex-codec":407,"async/setImmediate":54,"events":720,"interface-connection":202,"pull-catch":580,"pull-stream":600,"stream-to-pull-stream":694}],409:[function(require,module,exports){
 'use strict'
 
 module.exports = {
@@ -50942,7 +50649,7 @@ module.exports = {
   PING_LENGTH: 32
 }
 
-},{}],602:[function(require,module,exports){
+},{}],410:[function(require,module,exports){
 'use strict'
 
 const pull = require('pull-stream')
@@ -50994,7 +50701,7 @@ exports = module.exports
 exports.mount = mount
 exports.unmount = unmount
 
-},{"./constants":601,"debug":101,"pull-handshake":878,"pull-stream":892}],603:[function(require,module,exports){
+},{"./constants":409,"debug":122,"pull-handshake":586,"pull-stream":600}],411:[function(require,module,exports){
 'use strict'
 
 const handler = require('./handler')
@@ -51003,7 +50710,7 @@ exports = module.exports = require('./ping')
 exports.mount = handler.mount
 exports.unmount = handler.unmount
 
-},{"./handler":602,"./ping":604}],604:[function(require,module,exports){
+},{"./handler":410,"./ping":412}],412:[function(require,module,exports){
 'use strict'
 
 const EventEmitter = require('events').EventEmitter
@@ -51084,7 +50791,7 @@ class Ping extends EventEmitter {
 
 module.exports = Ping
 
-},{"./constants":601,"./util":605,"debug":101,"events":1015,"pull-handshake":878,"pull-stream":892}],605:[function(require,module,exports){
+},{"./constants":409,"./util":413,"debug":122,"events":720,"pull-handshake":586,"pull-stream":600}],413:[function(require,module,exports){
 'use strict'
 
 const crypto = require('libp2p-crypto')
@@ -51099,13 +50806,11 @@ exports.rnd = (length) => {
   return crypto.randomBytes(length)
 }
 
-},{"./constants":601,"libp2p-crypto":552}],606:[function(require,module,exports){
-arguments[4][85][0].apply(exports,arguments)
-},{"./slice":607,"_process":1024,"dup":85}],607:[function(require,module,exports){
-arguments[4][86][0].apply(exports,arguments)
-},{"dup":86}],608:[function(require,module,exports){
-arguments[4][186][0].apply(exports,arguments)
-},{"./internal/setImmediate":606,"dup":186}],609:[function(require,module,exports){
+},{"./constants":409,"libp2p-crypto":378}],414:[function(require,module,exports){
+arguments[4][208][0].apply(exports,arguments)
+},{"./debug":415,"_process":729,"dup":208}],415:[function(require,module,exports){
+arguments[4][209][0].apply(exports,arguments)
+},{"dup":209,"ms":514}],416:[function(require,module,exports){
 'use strict'
 
 const PeerId = require('peer-id')
@@ -51157,45 +50862,11 @@ class Railing extends EventEmitter {
 
 module.exports = Railing
 
-},{"async/setImmediate":608,"debug":101,"events":1015,"multiaddr":775,"peer-id":849,"peer-info":850}],610:[function(require,module,exports){
-arguments[4][72][0].apply(exports,arguments)
-},{"./internal/initialParams":618,"./internal/setImmediate":623,"dup":72,"lodash/isObject":758}],611:[function(require,module,exports){
-arguments[4][74][0].apply(exports,arguments)
-},{"./eachOfLimit":612,"./internal/breakLoop":614,"./internal/doLimit":615,"./internal/once":620,"./internal/onlyOnce":621,"./internal/wrapAsync":625,"dup":74,"lodash/isArrayLike":754,"lodash/noop":762}],612:[function(require,module,exports){
-arguments[4][75][0].apply(exports,arguments)
-},{"./internal/eachOfLimit":616,"./internal/wrapAsync":625,"dup":75}],613:[function(require,module,exports){
-arguments[4][200][0].apply(exports,arguments)
-},{"./eachOfLimit":612,"./internal/doLimit":615,"dup":200}],614:[function(require,module,exports){
-arguments[4][76][0].apply(exports,arguments)
-},{"dup":76}],615:[function(require,module,exports){
-arguments[4][77][0].apply(exports,arguments)
-},{"dup":77}],616:[function(require,module,exports){
-arguments[4][78][0].apply(exports,arguments)
-},{"./breakLoop":614,"./iterator":619,"./once":620,"./onlyOnce":621,"dup":78,"lodash/noop":762}],617:[function(require,module,exports){
-arguments[4][79][0].apply(exports,arguments)
-},{"dup":79}],618:[function(require,module,exports){
-arguments[4][80][0].apply(exports,arguments)
-},{"./slice":624,"dup":80}],619:[function(require,module,exports){
-arguments[4][81][0].apply(exports,arguments)
-},{"./getIterator":617,"dup":81,"lodash/isArrayLike":754,"lodash/keys":761}],620:[function(require,module,exports){
-arguments[4][82][0].apply(exports,arguments)
-},{"dup":82}],621:[function(require,module,exports){
-arguments[4][83][0].apply(exports,arguments)
-},{"dup":83}],622:[function(require,module,exports){
-arguments[4][84][0].apply(exports,arguments)
-},{"./slice":624,"./wrapAsync":625,"dup":84,"lodash/isArrayLike":754,"lodash/noop":762}],623:[function(require,module,exports){
-arguments[4][85][0].apply(exports,arguments)
-},{"./slice":624,"_process":1024,"dup":85}],624:[function(require,module,exports){
-arguments[4][86][0].apply(exports,arguments)
-},{"dup":86}],625:[function(require,module,exports){
-arguments[4][88][0].apply(exports,arguments)
-},{"../asyncify":610,"dup":88}],626:[function(require,module,exports){
-arguments[4][89][0].apply(exports,arguments)
-},{"./eachOf":611,"./internal/parallel":622,"dup":89}],627:[function(require,module,exports){
-arguments[4][221][0].apply(exports,arguments)
-},{"./eachOfSeries":613,"./internal/parallel":622,"dup":221}],628:[function(require,module,exports){
-arguments[4][90][0].apply(exports,arguments)
-},{"./internal/once":620,"./internal/onlyOnce":621,"./internal/slice":624,"./internal/wrapAsync":625,"dup":90,"lodash/isArray":753,"lodash/noop":762}],629:[function(require,module,exports){
+},{"async/setImmediate":54,"debug":414,"events":720,"multiaddr":517,"peer-id":558,"peer-info":559}],417:[function(require,module,exports){
+arguments[4][208][0].apply(exports,arguments)
+},{"./debug":418,"_process":729,"dup":208}],418:[function(require,module,exports){
+arguments[4][209][0].apply(exports,arguments)
+},{"dup":209,"ms":514}],419:[function(require,module,exports){
 (function (Buffer){
 'use strict'
 
@@ -51278,7 +50949,7 @@ function ensureBuffer () {
 }
 
 }).call(this,require("buffer").Buffer)
-},{"buffer":1013,"pull-length-prefixed":881,"pull-stream":892}],630:[function(require,module,exports){
+},{"buffer":718,"pull-length-prefixed":589,"pull-stream":600}],420:[function(require,module,exports){
 (function (Buffer){
 'use strict'
 
@@ -51480,7 +51151,7 @@ exports.verifyNonce = (state, n2) => {
 }
 
 }).call(this,require("buffer").Buffer)
-},{"../support":638,"./secio.proto":635,"async/parallel":626,"async/waterfall":628,"buffer":1013,"debug":101,"libp2p-crypto":552,"peer-id":849,"protons":867}],631:[function(require,module,exports){
+},{"../support":428,"./secio.proto":425,"async/parallel":50,"async/waterfall":57,"buffer":718,"debug":417,"libp2p-crypto":378,"peer-id":558,"protons":575}],421:[function(require,module,exports){
 'use strict'
 
 const debug = require('debug')
@@ -51519,7 +51190,7 @@ module.exports = function exchange (state, cb) {
   })
 }
 
-},{"../support":638,"./crypto":630,"async/waterfall":628,"debug":101}],632:[function(require,module,exports){
+},{"../support":428,"./crypto":420,"async/waterfall":57,"debug":417}],422:[function(require,module,exports){
 'use strict'
 
 const pull = require('pull-stream')
@@ -51581,7 +51252,7 @@ module.exports = function finish (state, cb) {
   })
 }
 
-},{"../etm":629,"./crypto":630,"debug":101,"pull-handshake":878,"pull-stream":892}],633:[function(require,module,exports){
+},{"../etm":419,"./crypto":420,"debug":417,"pull-handshake":586,"pull-stream":600}],423:[function(require,module,exports){
 'use strict'
 
 const series = require('async/series')
@@ -51611,7 +51282,7 @@ module.exports = function handshake (state) {
   return state.stream
 }
 
-},{"./exchange":631,"./finish":632,"./propose":634,"async/series":627}],634:[function(require,module,exports){
+},{"./exchange":421,"./finish":422,"./propose":424,"async/series":53}],424:[function(require,module,exports){
 'use strict'
 
 const debug = require('debug')
@@ -51648,7 +51319,7 @@ module.exports = function propose (state, cb) {
   })
 }
 
-},{"../support":638,"./crypto":630,"async/waterfall":628,"debug":101}],635:[function(require,module,exports){
+},{"../support":428,"./crypto":420,"async/waterfall":57,"debug":417}],425:[function(require,module,exports){
 'use strict'
 
 module.exports = `message Propose {
@@ -51664,7 +51335,7 @@ message Exchange {
   optional bytes signature = 2;
 }`
 
-},{}],636:[function(require,module,exports){
+},{}],426:[function(require,module,exports){
 'use strict'
 
 const pull = require('pull-stream')
@@ -51708,7 +51379,7 @@ module.exports = {
   }
 }
 
-},{"./handshake":633,"./state":637,"interface-connection":183,"pull-stream":892}],637:[function(require,module,exports){
+},{"./handshake":423,"./state":427,"interface-connection":202,"pull-stream":600}],427:[function(require,module,exports){
 'use strict'
 
 const handshake = require('pull-handshake')
@@ -51782,7 +51453,7 @@ class State {
 
 module.exports = State
 
-},{"pull-defer":874,"pull-handshake":878}],638:[function(require,module,exports){
+},{"pull-defer":582,"pull-handshake":586}],428:[function(require,module,exports){
 (function (Buffer){
 'use strict'
 
@@ -51921,153 +51592,11 @@ exports.read = function read (reader, cb) {
 }
 
 }).call(this,require("buffer").Buffer)
-},{"async/parallel":626,"buffer":1013,"libp2p-crypto":552,"multihashing-async":794,"pull-length-prefixed":881,"pull-stream":892}],639:[function(require,module,exports){
-arguments[4][72][0].apply(exports,arguments)
-},{"./internal/initialParams":650,"./internal/setImmediate":657,"dup":72,"lodash/isObject":758}],640:[function(require,module,exports){
-arguments[4][73][0].apply(exports,arguments)
-},{"./eachOf":641,"./internal/withoutIndex":659,"./internal/wrapAsync":660,"dup":73}],641:[function(require,module,exports){
-arguments[4][74][0].apply(exports,arguments)
-},{"./eachOfLimit":642,"./internal/breakLoop":645,"./internal/doLimit":646,"./internal/once":653,"./internal/onlyOnce":654,"./internal/wrapAsync":660,"dup":74,"lodash/isArrayLike":754,"lodash/noop":762}],642:[function(require,module,exports){
-arguments[4][75][0].apply(exports,arguments)
-},{"./internal/eachOfLimit":648,"./internal/wrapAsync":660,"dup":75}],643:[function(require,module,exports){
-arguments[4][200][0].apply(exports,arguments)
-},{"./eachOfLimit":642,"./internal/doLimit":646,"dup":200}],644:[function(require,module,exports){
-arguments[4][246][0].apply(exports,arguments)
-},{"dup":246}],645:[function(require,module,exports){
-arguments[4][76][0].apply(exports,arguments)
-},{"dup":76}],646:[function(require,module,exports){
-arguments[4][77][0].apply(exports,arguments)
-},{"dup":77}],647:[function(require,module,exports){
-arguments[4][204][0].apply(exports,arguments)
-},{"../eachOf":641,"./wrapAsync":660,"dup":204}],648:[function(require,module,exports){
-arguments[4][78][0].apply(exports,arguments)
-},{"./breakLoop":645,"./iterator":651,"./once":653,"./onlyOnce":654,"dup":78,"lodash/noop":762}],649:[function(require,module,exports){
-arguments[4][79][0].apply(exports,arguments)
-},{"dup":79}],650:[function(require,module,exports){
-arguments[4][80][0].apply(exports,arguments)
-},{"./slice":658,"dup":80}],651:[function(require,module,exports){
-arguments[4][81][0].apply(exports,arguments)
-},{"./getIterator":649,"dup":81,"lodash/isArrayLike":754,"lodash/keys":761}],652:[function(require,module,exports){
-arguments[4][210][0].apply(exports,arguments)
-},{"./wrapAsync":660,"dup":210,"lodash/noop":762}],653:[function(require,module,exports){
-arguments[4][82][0].apply(exports,arguments)
-},{"dup":82}],654:[function(require,module,exports){
-arguments[4][83][0].apply(exports,arguments)
-},{"dup":83}],655:[function(require,module,exports){
-arguments[4][84][0].apply(exports,arguments)
-},{"./slice":658,"./wrapAsync":660,"dup":84,"lodash/isArrayLike":754,"lodash/noop":762}],656:[function(require,module,exports){
-arguments[4][258][0].apply(exports,arguments)
-},{"./DoublyLinkedList":644,"./onlyOnce":654,"./setImmediate":657,"./wrapAsync":660,"dup":258,"lodash/_baseIndexOf":733,"lodash/isArray":753,"lodash/noop":762}],657:[function(require,module,exports){
-arguments[4][85][0].apply(exports,arguments)
-},{"./slice":658,"_process":1024,"dup":85}],658:[function(require,module,exports){
-arguments[4][86][0].apply(exports,arguments)
-},{"dup":86}],659:[function(require,module,exports){
-arguments[4][87][0].apply(exports,arguments)
-},{"dup":87}],660:[function(require,module,exports){
-arguments[4][88][0].apply(exports,arguments)
-},{"../asyncify":639,"dup":88}],661:[function(require,module,exports){
-arguments[4][219][0].apply(exports,arguments)
-},{"./internal/doParallel":647,"./internal/map":652,"dup":219}],662:[function(require,module,exports){
-arguments[4][89][0].apply(exports,arguments)
-},{"./eachOf":641,"./internal/parallel":655,"dup":89}],663:[function(require,module,exports){
-arguments[4][265][0].apply(exports,arguments)
-},{"./internal/queue":656,"./internal/wrapAsync":660,"dup":265}],664:[function(require,module,exports){
-arguments[4][221][0].apply(exports,arguments)
-},{"./eachOfSeries":643,"./internal/parallel":655,"dup":221}],665:[function(require,module,exports){
-arguments[4][186][0].apply(exports,arguments)
-},{"./internal/setImmediate":657,"dup":186}],666:[function(require,module,exports){
-'use strict';
-
-Object.defineProperty(exports, "__esModule", {
-    value: true
-});
-exports.default = timeout;
-
-var _initialParams = require('./internal/initialParams');
-
-var _initialParams2 = _interopRequireDefault(_initialParams);
-
-var _wrapAsync = require('./internal/wrapAsync');
-
-var _wrapAsync2 = _interopRequireDefault(_wrapAsync);
-
-function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
-
-/**
- * Sets a time limit on an asynchronous function. If the function does not call
- * its callback within the specified milliseconds, it will be called with a
- * timeout error. The code property for the error object will be `'ETIMEDOUT'`.
- *
- * @name timeout
- * @static
- * @memberOf module:Utils
- * @method
- * @category Util
- * @param {AsyncFunction} asyncFn - The async function to limit in time.
- * @param {number} milliseconds - The specified time limit.
- * @param {*} [info] - Any variable you want attached (`string`, `object`, etc)
- * to timeout Error for more information..
- * @returns {AsyncFunction} Returns a wrapped function that can be used with any
- * of the control flow functions.
- * Invoke this function with the same parameters as you would `asyncFunc`.
- * @example
- *
- * function myFunction(foo, callback) {
- *     doAsyncTask(foo, function(err, data) {
- *         // handle errors
- *         if (err) return callback(err);
- *
- *         // do some stuff ...
- *
- *         // return processed data
- *         return callback(null, data);
- *     });
- * }
- *
- * var wrapped = async.timeout(myFunction, 1000);
- *
- * // call `wrapped` as you would `myFunction`
- * wrapped({ bar: 'bar' }, function(err, data) {
- *     // if `myFunction` takes < 1000 ms to execute, `err`
- *     // and `data` will have their expected values
- *
- *     // else `err` will be an Error with the code 'ETIMEDOUT'
- * });
- */
-function timeout(asyncFn, milliseconds, info) {
-    var fn = (0, _wrapAsync2.default)(asyncFn);
-
-    return (0, _initialParams2.default)(function (args, callback) {
-        var timedOut = false;
-        var timer;
-
-        function timeoutCallback() {
-            var name = asyncFn.name || 'anonymous';
-            var error = new Error('Callback function "' + name + '" timed out.');
-            error.code = 'ETIMEDOUT';
-            if (info) {
-                error.info = info;
-            }
-            timedOut = true;
-            callback(error);
-        }
-
-        args.push(function () {
-            if (!timedOut) {
-                callback.apply(null, arguments);
-                clearTimeout(timer);
-            }
-        });
-
-        // setup timer and call original function
-        timer = setTimeout(timeoutCallback, milliseconds);
-        fn.apply(null, args);
-    });
-}
-module.exports = exports['default'];
-},{"./internal/initialParams":650,"./internal/wrapAsync":660}],667:[function(require,module,exports){
-arguments[4][90][0].apply(exports,arguments)
-},{"./internal/once":653,"./internal/onlyOnce":654,"./internal/slice":658,"./internal/wrapAsync":660,"dup":90,"lodash/isArray":753,"lodash/noop":762}],668:[function(require,module,exports){
+},{"async/parallel":50,"buffer":718,"libp2p-crypto":378,"multihashing-async":533,"pull-length-prefixed":589,"pull-stream":600}],429:[function(require,module,exports){
+arguments[4][208][0].apply(exports,arguments)
+},{"./debug":430,"_process":729,"dup":208}],430:[function(require,module,exports){
+arguments[4][209][0].apply(exports,arguments)
+},{"dup":209,"ms":514}],431:[function(require,module,exports){
 'use strict'
 
 const identify = require('libp2p-identify')
@@ -52181,7 +51710,7 @@ module.exports = function connection (swarm) {
   }
 }
 
-},{"./plaintext":674,"./protocol-muxer":675,"async/setImmediate":665,"async/waterfall":667,"debug":101,"libp2p-identify":592,"multistream-select":825}],669:[function(require,module,exports){
+},{"./plaintext":437,"./protocol-muxer":438,"async/setImmediate":54,"async/waterfall":57,"debug":429,"libp2p-identify":403,"multistream-select":543}],432:[function(require,module,exports){
 'use strict'
 
 const multistream = require('multistream-select')
@@ -52386,7 +51915,7 @@ function dial (swarm) {
 
 module.exports = dial
 
-},{"./get-peer-info":670,"./protocol-muxer":675,"async/setImmediate":665,"debug":101,"interface-connection":183,"multistream-select":825}],670:[function(require,module,exports){
+},{"./get-peer-info":433,"./protocol-muxer":438,"async/setImmediate":54,"debug":429,"interface-connection":202,"multistream-select":543}],433:[function(require,module,exports){
 'use strict'
 
 const PeerId = require('peer-id')
@@ -52429,7 +51958,7 @@ function getPeerInfo (peer, peerBook) {
 
 module.exports = getPeerInfo
 
-},{"multiaddr":775,"peer-id":849,"peer-info":850}],671:[function(require,module,exports){
+},{"multiaddr":517,"peer-id":558,"peer-info":559}],434:[function(require,module,exports){
 'use strict'
 
 const util = require('util')
@@ -52566,7 +52095,7 @@ function Swarm (peerInfo, peerBook) {
   }
 }
 
-},{"./connection":668,"./dial":669,"./get-peer-info":670,"./plaintext":674,"./protocol-muxer":675,"./transport":676,"assert":1010,"async/each":640,"async/series":664,"events":1015,"util":1050}],672:[function(require,module,exports){
+},{"./connection":431,"./dial":432,"./get-peer-info":433,"./plaintext":437,"./protocol-muxer":438,"./transport":439,"assert":715,"async/each":21,"async/series":53,"events":720,"util":755}],435:[function(require,module,exports){
 'use strict'
 
 const map = require('async/map')
@@ -52656,7 +52185,7 @@ class LimitDialer {
 
 module.exports = LimitDialer
 
-},{"./queue":673,"async/map":661,"debug":101}],673:[function(require,module,exports){
+},{"./queue":436,"async/map":49,"debug":429}],436:[function(require,module,exports){
 'use strict'
 
 const Connection = require('interface-connection').Connection
@@ -52761,7 +52290,7 @@ class DialQueue {
 
 module.exports = DialQueue
 
-},{"async/queue":663,"async/timeout":666,"debug":101,"interface-connection":183,"pull-stream":892}],674:[function(require,module,exports){
+},{"async/queue":51,"async/timeout":56,"debug":429,"interface-connection":202,"pull-stream":600}],437:[function(require,module,exports){
 'use strict'
 
 module.exports = {
@@ -52771,7 +52300,7 @@ module.exports = {
   }
 }
 
-},{}],675:[function(require,module,exports){
+},{}],438:[function(require,module,exports){
 'use strict'
 
 const multistream = require('multistream-select')
@@ -52794,7 +52323,7 @@ module.exports = function protocolMuxer (protocols, conn) {
   })
 }
 
-},{"multistream-select":825}],676:[function(require,module,exports){
+},{"multistream-select":543}],439:[function(require,module,exports){
 'use strict'
 
 const parallel = require('async/parallel')
@@ -52930,13 +52459,11 @@ function dialables (tp, multiaddrs) {
 
 function noop () {}
 
-},{"./limit-dialer":672,"./protocol-muxer":675,"async/parallel":662,"debug":101,"once":837}],677:[function(require,module,exports){
-arguments[4][85][0].apply(exports,arguments)
-},{"./slice":678,"_process":1024,"dup":85}],678:[function(require,module,exports){
-arguments[4][86][0].apply(exports,arguments)
-},{"dup":86}],679:[function(require,module,exports){
-arguments[4][186][0].apply(exports,arguments)
-},{"./internal/setImmediate":677,"dup":186}],680:[function(require,module,exports){
+},{"./limit-dialer":435,"./protocol-muxer":438,"async/parallel":50,"debug":429,"once":554}],440:[function(require,module,exports){
+arguments[4][208][0].apply(exports,arguments)
+},{"./debug":441,"_process":729,"dup":208}],441:[function(require,module,exports){
+arguments[4][209][0].apply(exports,arguments)
+},{"dup":209,"ms":514}],442:[function(require,module,exports){
 'use strict'
 
 const debug = require('debug')
@@ -53169,7 +52696,7 @@ class WebRTCStar {
 
 module.exports = WebRTCStar
 
-},{"./utils":681,"async/setImmediate":679,"debug":101,"events":1015,"interface-connection":183,"mafmt":766,"multiaddr":775,"once":837,"peer-id":849,"peer-info":850,"simple-peer":972,"socket.io-client":976,"stream-to-pull-stream":992,"webrtcsupport":1006}],681:[function(require,module,exports){
+},{"./utils":443,"async/setImmediate":54,"debug":440,"events":720,"interface-connection":202,"mafmt":508,"multiaddr":517,"once":554,"peer-id":558,"peer-info":559,"simple-peer":680,"socket.io-client":682,"stream-to-pull-stream":694,"webrtcsupport":711}],443:[function(require,module,exports){
 'use strict'
 
 const multiaddr = require('multiaddr')
@@ -53215,7 +52742,7 @@ exports = module.exports
 exports.cleanUrlSIO = cleanUrlSIO
 exports.cleanMultiaddr = cleanMultiaddr
 
-},{"multiaddr":775}],682:[function(require,module,exports){
+},{"multiaddr":517}],444:[function(require,module,exports){
 'use strict'
 
 const multiaddr = require('multiaddr')
@@ -53429,7 +52956,7 @@ function base (n) {
   }
 }
 
-},{"multiaddr":685}],683:[function(require,module,exports){
+},{"multiaddr":447}],445:[function(require,module,exports){
 (function (Buffer){
 'use strict'
 
@@ -53644,7 +53171,7 @@ function protoFromTuple (tup) {
 }
 
 }).call(this,require("buffer").Buffer)
-},{"./convert":684,"./protocols-table":686,"buffer":1013,"lodash.filter":712,"lodash.map":720,"varint":1003}],684:[function(require,module,exports){
+},{"./convert":446,"./protocols-table":448,"buffer":718,"lodash.filter":454,"lodash.map":462,"varint":708}],446:[function(require,module,exports){
 (function (Buffer){
 'use strict'
 
@@ -53760,7 +53287,7 @@ function buf2mh (buf) {
 }
 
 }).call(this,require("buffer").Buffer)
-},{"./protocols-table":686,"bs58":58,"buffer":1013,"ip":194,"varint":1003}],685:[function(require,module,exports){
+},{"./protocols-table":448,"bs58":99,"buffer":718,"ip":207,"varint":708}],447:[function(require,module,exports){
 (function (Buffer){
 'use strict'
 
@@ -54223,7 +53750,7 @@ Multiaddr.resolve = function resolve (addr, callback) {
 }
 
 }).call(this,require("buffer").Buffer)
-},{"./codec":683,"./protocols-table":686,"bs58":58,"buffer":1013,"lodash.map":720,"varint":1003,"xtend":1008}],686:[function(require,module,exports){
+},{"./codec":445,"./protocols-table":448,"bs58":99,"buffer":718,"lodash.map":462,"varint":708,"xtend":713}],448:[function(require,module,exports){
 'use strict'
 
 const map = require('lodash.map')
@@ -54295,7 +53822,7 @@ function p (code, size, name, resolvable) {
 
 module.exports = Protocols
 
-},{"lodash.map":720}],687:[function(require,module,exports){
+},{"lodash.map":462}],449:[function(require,module,exports){
 'use strict'
 
 const connect = require('pull-ws/client')
@@ -54357,7 +53884,7 @@ class WebSockets {
 
 module.exports = WebSockets
 
-},{"./listener":688,"./ma-to-url":689,"debug":101,"interface-connection":183,"lodash.includes":717,"mafmt":682,"pull-ws/client":927}],688:[function(require,module,exports){
+},{"./listener":450,"./ma-to-url":451,"debug":122,"interface-connection":202,"lodash.includes":459,"mafmt":444,"pull-ws/client":635}],450:[function(require,module,exports){
 'use strict'
 
 const Connection = require('interface-connection').Connection
@@ -54396,7 +53923,7 @@ module.exports = (options, handler) => {
   return listener
 }
 
-},{"interface-connection":183,"lodash.includes":717,"pull-ws/server":1012}],689:[function(require,module,exports){
+},{"interface-connection":202,"lodash.includes":459,"pull-ws/server":717}],451:[function(require,module,exports){
 'use strict'
 
 const debug = require('debug')
@@ -54435,47 +53962,7 @@ function maToUrl (ma) {
 
 module.exports = maToUrl
 
-},{"debug":101}],690:[function(require,module,exports){
-arguments[4][72][0].apply(exports,arguments)
-},{"./internal/initialParams":699,"./internal/setImmediate":704,"dup":72,"lodash/isObject":758}],691:[function(require,module,exports){
-arguments[4][73][0].apply(exports,arguments)
-},{"./eachOf":692,"./internal/withoutIndex":706,"./internal/wrapAsync":707,"dup":73}],692:[function(require,module,exports){
-arguments[4][74][0].apply(exports,arguments)
-},{"./eachOfLimit":693,"./internal/breakLoop":695,"./internal/doLimit":696,"./internal/once":701,"./internal/onlyOnce":702,"./internal/wrapAsync":707,"dup":74,"lodash/isArrayLike":754,"lodash/noop":762}],693:[function(require,module,exports){
-arguments[4][75][0].apply(exports,arguments)
-},{"./internal/eachOfLimit":697,"./internal/wrapAsync":707,"dup":75}],694:[function(require,module,exports){
-arguments[4][200][0].apply(exports,arguments)
-},{"./eachOfLimit":693,"./internal/doLimit":696,"dup":200}],695:[function(require,module,exports){
-arguments[4][76][0].apply(exports,arguments)
-},{"dup":76}],696:[function(require,module,exports){
-arguments[4][77][0].apply(exports,arguments)
-},{"dup":77}],697:[function(require,module,exports){
-arguments[4][78][0].apply(exports,arguments)
-},{"./breakLoop":695,"./iterator":700,"./once":701,"./onlyOnce":702,"dup":78,"lodash/noop":762}],698:[function(require,module,exports){
-arguments[4][79][0].apply(exports,arguments)
-},{"dup":79}],699:[function(require,module,exports){
-arguments[4][80][0].apply(exports,arguments)
-},{"./slice":705,"dup":80}],700:[function(require,module,exports){
-arguments[4][81][0].apply(exports,arguments)
-},{"./getIterator":698,"dup":81,"lodash/isArrayLike":754,"lodash/keys":761}],701:[function(require,module,exports){
-arguments[4][82][0].apply(exports,arguments)
-},{"dup":82}],702:[function(require,module,exports){
-arguments[4][83][0].apply(exports,arguments)
-},{"dup":83}],703:[function(require,module,exports){
-arguments[4][84][0].apply(exports,arguments)
-},{"./slice":705,"./wrapAsync":707,"dup":84,"lodash/isArrayLike":754,"lodash/noop":762}],704:[function(require,module,exports){
-arguments[4][85][0].apply(exports,arguments)
-},{"./slice":705,"_process":1024,"dup":85}],705:[function(require,module,exports){
-arguments[4][86][0].apply(exports,arguments)
-},{"dup":86}],706:[function(require,module,exports){
-arguments[4][87][0].apply(exports,arguments)
-},{"dup":87}],707:[function(require,module,exports){
-arguments[4][88][0].apply(exports,arguments)
-},{"../asyncify":690,"dup":88}],708:[function(require,module,exports){
-arguments[4][221][0].apply(exports,arguments)
-},{"./eachOfSeries":694,"./internal/parallel":703,"dup":221}],709:[function(require,module,exports){
-arguments[4][186][0].apply(exports,arguments)
-},{"./internal/setImmediate":704,"dup":186}],710:[function(require,module,exports){
+},{"debug":122}],452:[function(require,module,exports){
 'use strict'
 
 const EventEmitter = require('events').EventEmitter
@@ -54803,7 +54290,7 @@ class Node extends EventEmitter {
 
 module.exports = Node
 
-},{"assert":1010,"async/each":691,"async/series":708,"async/setImmediate":709,"events":1015,"libp2p-ping":603,"libp2p-swarm":671,"mafmt":766,"multiaddr":775,"peer-book":840,"peer-id":849,"peer-info":850}],711:[function(require,module,exports){
+},{"assert":715,"async/each":21,"async/series":53,"async/setImmediate":54,"events":720,"libp2p-ping":411,"libp2p-swarm":434,"mafmt":508,"multiaddr":517,"peer-book":557,"peer-id":558,"peer-info":559}],453:[function(require,module,exports){
 (function (global){
 /**
  * lodash (Custom Build) <https://lodash.com/>
@@ -55184,7 +54671,7 @@ function toNumber(value) {
 module.exports = debounce;
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],712:[function(require,module,exports){
+},{}],454:[function(require,module,exports){
 (function (global){
 /**
  * lodash (Custom Build) <https://lodash.com/>
@@ -57554,7 +57041,7 @@ function property(path) {
 module.exports = filter;
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],713:[function(require,module,exports){
+},{}],455:[function(require,module,exports){
 (function (global){
 /**
  * lodash (Custom Build) <https://lodash.com/>
@@ -60011,7 +59498,7 @@ function property(path) {
 module.exports = find;
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],714:[function(require,module,exports){
+},{}],456:[function(require,module,exports){
 (function (global){
 /**
  * lodash (Custom Build) <https://lodash.com/>
@@ -60946,7 +60433,7 @@ function get(object, path, defaultValue) {
 module.exports = get;
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],715:[function(require,module,exports){
+},{}],457:[function(require,module,exports){
 (function (global){
 /**
  * lodash (Custom Build) <https://lodash.com/>
@@ -63319,7 +62806,7 @@ function property(path) {
 module.exports = groupBy;
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],716:[function(require,module,exports){
+},{}],458:[function(require,module,exports){
 (function (global){
 /**
  * lodash (Custom Build) <https://lodash.com/>
@@ -64412,7 +63899,7 @@ function has(object, path) {
 module.exports = has;
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],717:[function(require,module,exports){
+},{}],459:[function(require,module,exports){
 /**
  * lodash (Custom Build) <https://lodash.com/>
  * Build: `lodash modularize exports="npm" -o ./`
@@ -65159,7 +64646,7 @@ function values(object) {
 
 module.exports = includes;
 
-},{}],718:[function(require,module,exports){
+},{}],460:[function(require,module,exports){
 (function (global){
 /**
  * lodash (Custom Build) <https://lodash.com/>
@@ -66818,7 +66305,7 @@ function keys(object) {
 module.exports = isEqualWith;
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],719:[function(require,module,exports){
+},{}],461:[function(require,module,exports){
 /**
  * lodash 3.0.8 (Custom Build) <https://lodash.com/>
  * Build: `lodash modularize exports="npm" -o ./`
@@ -66895,7 +66382,7 @@ function isObject(value) {
 
 module.exports = isFunction;
 
-},{}],720:[function(require,module,exports){
+},{}],462:[function(require,module,exports){
 (function (global){
 /**
  * lodash (Custom Build) <https://lodash.com/>
@@ -69265,7 +68752,7 @@ function property(path) {
 module.exports = map;
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],721:[function(require,module,exports){
+},{}],463:[function(require,module,exports){
 /**
  * lodash (Custom Build) <https://lodash.com/>
  * Build: `lodash modularize exports="npm" -o ./`
@@ -69482,7 +68969,7 @@ function pullAllWith(array, values, comparator) {
 
 module.exports = pullAllWith;
 
-},{}],722:[function(require,module,exports){
+},{}],464:[function(require,module,exports){
 (function (global){
 /**
  * lodash (Custom Build) <https://lodash.com/>
@@ -70476,7 +69963,7 @@ function set(object, path, value) {
 module.exports = set;
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],723:[function(require,module,exports){
+},{}],465:[function(require,module,exports){
 (function (global){
 /**
  * lodash (Custom Build) <https://lodash.com/>
@@ -73110,7 +72597,7 @@ function property(path) {
 module.exports = sortBy;
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],724:[function(require,module,exports){
+},{}],466:[function(require,module,exports){
 (function (global){
 /**
  * lodash (Custom Build) <https://lodash.com/>
@@ -73553,7 +73040,7 @@ function toNumber(value) {
 module.exports = throttle;
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],725:[function(require,module,exports){
+},{}],467:[function(require,module,exports){
 (function (global){
 /**
  * lodash (Custom Build) <https://lodash.com/>
@@ -75971,7 +75458,7 @@ function property(path) {
 module.exports = uniqBy;
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],726:[function(require,module,exports){
+},{}],468:[function(require,module,exports){
 (function (global){
 /**
  * lodash (Custom Build) <https://lodash.com/>
@@ -76873,7 +76360,7 @@ function noop() {
 module.exports = uniqWith;
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],727:[function(require,module,exports){
+},{}],469:[function(require,module,exports){
 /**
  * lodash (Custom Build) <https://lodash.com/>
  * Build: `lodash modularize exports="npm" -o ./`
@@ -77342,7 +76829,7 @@ function values(object) {
 
 module.exports = values;
 
-},{}],728:[function(require,module,exports){
+},{}],470:[function(require,module,exports){
 var root = require('./_root');
 
 /** Built-in value references. */
@@ -77350,7 +76837,7 @@ var Symbol = root.Symbol;
 
 module.exports = Symbol;
 
-},{"./_root":749}],729:[function(require,module,exports){
+},{"./_root":491}],471:[function(require,module,exports){
 var baseTimes = require('./_baseTimes'),
     isArguments = require('./isArguments'),
     isArray = require('./isArray'),
@@ -77401,7 +76888,7 @@ function arrayLikeKeys(value, inherited) {
 
 module.exports = arrayLikeKeys;
 
-},{"./_baseTimes":739,"./_isIndex":743,"./isArguments":752,"./isArray":753,"./isBuffer":755,"./isTypedArray":760}],730:[function(require,module,exports){
+},{"./_baseTimes":481,"./_isIndex":485,"./isArguments":494,"./isArray":495,"./isBuffer":497,"./isTypedArray":502}],472:[function(require,module,exports){
 /**
  * A specialized version of `_.map` for arrays without support for iteratee
  * shorthands.
@@ -77424,7 +76911,7 @@ function arrayMap(array, iteratee) {
 
 module.exports = arrayMap;
 
-},{}],731:[function(require,module,exports){
+},{}],473:[function(require,module,exports){
 /**
  * The base implementation of `_.findIndex` and `_.findLastIndex` without
  * support for iteratee shorthands.
@@ -77450,7 +76937,7 @@ function baseFindIndex(array, predicate, fromIndex, fromRight) {
 
 module.exports = baseFindIndex;
 
-},{}],732:[function(require,module,exports){
+},{}],474:[function(require,module,exports){
 var Symbol = require('./_Symbol'),
     getRawTag = require('./_getRawTag'),
     objectToString = require('./_objectToString');
@@ -77480,7 +76967,7 @@ function baseGetTag(value) {
 
 module.exports = baseGetTag;
 
-},{"./_Symbol":728,"./_getRawTag":742,"./_objectToString":747}],733:[function(require,module,exports){
+},{"./_Symbol":470,"./_getRawTag":484,"./_objectToString":489}],475:[function(require,module,exports){
 var baseFindIndex = require('./_baseFindIndex'),
     baseIsNaN = require('./_baseIsNaN'),
     strictIndexOf = require('./_strictIndexOf');
@@ -77502,7 +76989,7 @@ function baseIndexOf(array, value, fromIndex) {
 
 module.exports = baseIndexOf;
 
-},{"./_baseFindIndex":731,"./_baseIsNaN":735,"./_strictIndexOf":750}],734:[function(require,module,exports){
+},{"./_baseFindIndex":473,"./_baseIsNaN":477,"./_strictIndexOf":492}],476:[function(require,module,exports){
 var baseGetTag = require('./_baseGetTag'),
     isObjectLike = require('./isObjectLike');
 
@@ -77522,7 +77009,7 @@ function baseIsArguments(value) {
 
 module.exports = baseIsArguments;
 
-},{"./_baseGetTag":732,"./isObjectLike":759}],735:[function(require,module,exports){
+},{"./_baseGetTag":474,"./isObjectLike":501}],477:[function(require,module,exports){
 /**
  * The base implementation of `_.isNaN` without support for number objects.
  *
@@ -77536,7 +77023,7 @@ function baseIsNaN(value) {
 
 module.exports = baseIsNaN;
 
-},{}],736:[function(require,module,exports){
+},{}],478:[function(require,module,exports){
 var baseGetTag = require('./_baseGetTag'),
     isLength = require('./isLength'),
     isObjectLike = require('./isObjectLike');
@@ -77598,7 +77085,7 @@ function baseIsTypedArray(value) {
 
 module.exports = baseIsTypedArray;
 
-},{"./_baseGetTag":732,"./isLength":757,"./isObjectLike":759}],737:[function(require,module,exports){
+},{"./_baseGetTag":474,"./isLength":499,"./isObjectLike":501}],479:[function(require,module,exports){
 var isPrototype = require('./_isPrototype'),
     nativeKeys = require('./_nativeKeys');
 
@@ -77630,7 +77117,7 @@ function baseKeys(object) {
 
 module.exports = baseKeys;
 
-},{"./_isPrototype":744,"./_nativeKeys":745}],738:[function(require,module,exports){
+},{"./_isPrototype":486,"./_nativeKeys":487}],480:[function(require,module,exports){
 /**
  * The base implementation of `_.property` without support for deep paths.
  *
@@ -77646,7 +77133,7 @@ function baseProperty(key) {
 
 module.exports = baseProperty;
 
-},{}],739:[function(require,module,exports){
+},{}],481:[function(require,module,exports){
 /**
  * The base implementation of `_.times` without support for iteratee shorthands
  * or max array length checks.
@@ -77668,7 +77155,7 @@ function baseTimes(n, iteratee) {
 
 module.exports = baseTimes;
 
-},{}],740:[function(require,module,exports){
+},{}],482:[function(require,module,exports){
 /**
  * The base implementation of `_.unary` without support for storing metadata.
  *
@@ -77684,7 +77171,7 @@ function baseUnary(func) {
 
 module.exports = baseUnary;
 
-},{}],741:[function(require,module,exports){
+},{}],483:[function(require,module,exports){
 (function (global){
 /** Detect free variable `global` from Node.js. */
 var freeGlobal = typeof global == 'object' && global && global.Object === Object && global;
@@ -77692,7 +77179,7 @@ var freeGlobal = typeof global == 'object' && global && global.Object === Object
 module.exports = freeGlobal;
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],742:[function(require,module,exports){
+},{}],484:[function(require,module,exports){
 var Symbol = require('./_Symbol');
 
 /** Used for built-in method references. */
@@ -77740,7 +77227,7 @@ function getRawTag(value) {
 
 module.exports = getRawTag;
 
-},{"./_Symbol":728}],743:[function(require,module,exports){
+},{"./_Symbol":470}],485:[function(require,module,exports){
 /** Used as references for various `Number` constants. */
 var MAX_SAFE_INTEGER = 9007199254740991;
 
@@ -77764,7 +77251,7 @@ function isIndex(value, length) {
 
 module.exports = isIndex;
 
-},{}],744:[function(require,module,exports){
+},{}],486:[function(require,module,exports){
 /** Used for built-in method references. */
 var objectProto = Object.prototype;
 
@@ -77784,7 +77271,7 @@ function isPrototype(value) {
 
 module.exports = isPrototype;
 
-},{}],745:[function(require,module,exports){
+},{}],487:[function(require,module,exports){
 var overArg = require('./_overArg');
 
 /* Built-in method references for those with the same name as other `lodash` methods. */
@@ -77792,7 +77279,7 @@ var nativeKeys = overArg(Object.keys, Object);
 
 module.exports = nativeKeys;
 
-},{"./_overArg":748}],746:[function(require,module,exports){
+},{"./_overArg":490}],488:[function(require,module,exports){
 var freeGlobal = require('./_freeGlobal');
 
 /** Detect free variable `exports`. */
@@ -77816,7 +77303,7 @@ var nodeUtil = (function() {
 
 module.exports = nodeUtil;
 
-},{"./_freeGlobal":741}],747:[function(require,module,exports){
+},{"./_freeGlobal":483}],489:[function(require,module,exports){
 /** Used for built-in method references. */
 var objectProto = Object.prototype;
 
@@ -77840,7 +77327,7 @@ function objectToString(value) {
 
 module.exports = objectToString;
 
-},{}],748:[function(require,module,exports){
+},{}],490:[function(require,module,exports){
 /**
  * Creates a unary function that invokes `func` with its argument transformed.
  *
@@ -77857,7 +77344,7 @@ function overArg(func, transform) {
 
 module.exports = overArg;
 
-},{}],749:[function(require,module,exports){
+},{}],491:[function(require,module,exports){
 var freeGlobal = require('./_freeGlobal');
 
 /** Detect free variable `self`. */
@@ -77868,7 +77355,7 @@ var root = freeGlobal || freeSelf || Function('return this')();
 
 module.exports = root;
 
-},{"./_freeGlobal":741}],750:[function(require,module,exports){
+},{"./_freeGlobal":483}],492:[function(require,module,exports){
 /**
  * A specialized version of `_.indexOf` which performs strict equality
  * comparisons of values, i.e. `===`.
@@ -77893,7 +77380,7 @@ function strictIndexOf(array, value, fromIndex) {
 
 module.exports = strictIndexOf;
 
-},{}],751:[function(require,module,exports){
+},{}],493:[function(require,module,exports){
 /**
  * This method returns the first argument it receives.
  *
@@ -77916,7 +77403,7 @@ function identity(value) {
 
 module.exports = identity;
 
-},{}],752:[function(require,module,exports){
+},{}],494:[function(require,module,exports){
 var baseIsArguments = require('./_baseIsArguments'),
     isObjectLike = require('./isObjectLike');
 
@@ -77954,7 +77441,7 @@ var isArguments = baseIsArguments(function() { return arguments; }()) ? baseIsAr
 
 module.exports = isArguments;
 
-},{"./_baseIsArguments":734,"./isObjectLike":759}],753:[function(require,module,exports){
+},{"./_baseIsArguments":476,"./isObjectLike":501}],495:[function(require,module,exports){
 /**
  * Checks if `value` is classified as an `Array` object.
  *
@@ -77982,7 +77469,7 @@ var isArray = Array.isArray;
 
 module.exports = isArray;
 
-},{}],754:[function(require,module,exports){
+},{}],496:[function(require,module,exports){
 var isFunction = require('./isFunction'),
     isLength = require('./isLength');
 
@@ -78017,7 +77504,7 @@ function isArrayLike(value) {
 
 module.exports = isArrayLike;
 
-},{"./isFunction":756,"./isLength":757}],755:[function(require,module,exports){
+},{"./isFunction":498,"./isLength":499}],497:[function(require,module,exports){
 var root = require('./_root'),
     stubFalse = require('./stubFalse');
 
@@ -78057,7 +77544,7 @@ var isBuffer = nativeIsBuffer || stubFalse;
 
 module.exports = isBuffer;
 
-},{"./_root":749,"./stubFalse":763}],756:[function(require,module,exports){
+},{"./_root":491,"./stubFalse":505}],498:[function(require,module,exports){
 var baseGetTag = require('./_baseGetTag'),
     isObject = require('./isObject');
 
@@ -78096,7 +77583,7 @@ function isFunction(value) {
 
 module.exports = isFunction;
 
-},{"./_baseGetTag":732,"./isObject":758}],757:[function(require,module,exports){
+},{"./_baseGetTag":474,"./isObject":500}],499:[function(require,module,exports){
 /** Used as references for various `Number` constants. */
 var MAX_SAFE_INTEGER = 9007199254740991;
 
@@ -78133,7 +77620,7 @@ function isLength(value) {
 
 module.exports = isLength;
 
-},{}],758:[function(require,module,exports){
+},{}],500:[function(require,module,exports){
 /**
  * Checks if `value` is the
  * [language type](http://www.ecma-international.org/ecma-262/7.0/#sec-ecmascript-language-types)
@@ -78166,7 +77653,7 @@ function isObject(value) {
 
 module.exports = isObject;
 
-},{}],759:[function(require,module,exports){
+},{}],501:[function(require,module,exports){
 /**
  * Checks if `value` is object-like. A value is object-like if it's not `null`
  * and has a `typeof` result of "object".
@@ -78197,7 +77684,7 @@ function isObjectLike(value) {
 
 module.exports = isObjectLike;
 
-},{}],760:[function(require,module,exports){
+},{}],502:[function(require,module,exports){
 var baseIsTypedArray = require('./_baseIsTypedArray'),
     baseUnary = require('./_baseUnary'),
     nodeUtil = require('./_nodeUtil');
@@ -78226,7 +77713,7 @@ var isTypedArray = nodeIsTypedArray ? baseUnary(nodeIsTypedArray) : baseIsTypedA
 
 module.exports = isTypedArray;
 
-},{"./_baseIsTypedArray":736,"./_baseUnary":740,"./_nodeUtil":746}],761:[function(require,module,exports){
+},{"./_baseIsTypedArray":478,"./_baseUnary":482,"./_nodeUtil":488}],503:[function(require,module,exports){
 var arrayLikeKeys = require('./_arrayLikeKeys'),
     baseKeys = require('./_baseKeys'),
     isArrayLike = require('./isArrayLike');
@@ -78265,7 +77752,7 @@ function keys(object) {
 
 module.exports = keys;
 
-},{"./_arrayLikeKeys":729,"./_baseKeys":737,"./isArrayLike":754}],762:[function(require,module,exports){
+},{"./_arrayLikeKeys":471,"./_baseKeys":479,"./isArrayLike":496}],504:[function(require,module,exports){
 /**
  * This method returns `undefined`.
  *
@@ -78284,7 +77771,7 @@ function noop() {
 
 module.exports = noop;
 
-},{}],763:[function(require,module,exports){
+},{}],505:[function(require,module,exports){
 /**
  * This method returns `false`.
  *
@@ -78304,7 +77791,7 @@ function stubFalse() {
 
 module.exports = stubFalse;
 
-},{}],764:[function(require,module,exports){
+},{}],506:[function(require,module,exports){
 
 var looper = module.exports = function (fun) {
   (function next () {
@@ -78320,7 +77807,7 @@ var looper = module.exports = function (fun) {
   })()
 }
 
-},{}],765:[function(require,module,exports){
+},{}],507:[function(require,module,exports){
 (function (Buffer){
 
 exports.compare = function (a, b) {
@@ -78492,8 +77979,8 @@ exports.filter = function (range, compare) {
 
 
 
-}).call(this,{"isBuffer":require("../../../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js")})
-},{"../../../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js":1019}],766:[function(require,module,exports){
+}).call(this,{"isBuffer":require("../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js")})
+},{"../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js":724}],508:[function(require,module,exports){
 'use strict'
 
 const multiaddr = require('multiaddr')
@@ -78720,7 +78207,7 @@ function base (n) {
   }
 }
 
-},{"multiaddr":775}],767:[function(require,module,exports){
+},{"multiaddr":517}],509:[function(require,module,exports){
 (function (Buffer){
 'use strict'
 var inherits = require('inherits')
@@ -78869,7 +78356,7 @@ function fnI (a, b, c, d, m, k, s) {
 module.exports = MD5
 
 }).call(this,require("buffer").Buffer)
-},{"buffer":1013,"hash-base":768,"inherits":181}],768:[function(require,module,exports){
+},{"buffer":718,"hash-base":510,"inherits":200}],510:[function(require,module,exports){
 'use strict'
 var Buffer = require('safe-buffer').Buffer
 var Transform = require('stream').Transform
@@ -78966,7 +78453,7 @@ HashBase.prototype._digest = function () {
 
 module.exports = HashBase
 
-},{"inherits":181,"safe-buffer":948,"stream":1043}],769:[function(require,module,exports){
+},{"inherits":200,"safe-buffer":656,"stream":748}],511:[function(require,module,exports){
 (function (Buffer){
 const rlp = require('rlp')
 const ethUtil = require('ethereumjs-util')
@@ -79225,7 +78712,7 @@ function isRawNode (node) {
 }
 
 }).call(this,require("buffer").Buffer)
-},{"buffer":1013,"ethereumjs-util":155,"rlp":947}],770:[function(require,module,exports){
+},{"buffer":718,"ethereumjs-util":174,"rlp":655}],512:[function(require,module,exports){
 module.exports = assert;
 
 function assert(val, msg) {
@@ -79238,7 +78725,7 @@ assert.equal = function assertEqual(l, r, msg) {
     throw new Error(msg || ('Assertion failed: ' + l + ' != ' + r));
 };
 
-},{}],771:[function(require,module,exports){
+},{}],513:[function(require,module,exports){
 'use strict';
 
 var utils = exports;
@@ -79298,7 +78785,7 @@ utils.encode = function encode(arr, enc) {
     return arr;
 };
 
-},{}],772:[function(require,module,exports){
+},{}],514:[function(require,module,exports){
 /**
  * Helpers.
  */
@@ -79452,13 +78939,13 @@ function plural(ms, n, name) {
   return Math.ceil(ms / n) + ' ' + name + 's';
 }
 
-},{}],773:[function(require,module,exports){
-arguments[4][683][0].apply(exports,arguments)
-},{"./convert":774,"./protocols-table":776,"buffer":1013,"dup":683,"lodash.filter":712,"lodash.map":720,"varint":1003}],774:[function(require,module,exports){
-arguments[4][684][0].apply(exports,arguments)
-},{"./protocols-table":776,"bs58":58,"buffer":1013,"dup":684,"ip":194,"varint":1003}],775:[function(require,module,exports){
-arguments[4][685][0].apply(exports,arguments)
-},{"./codec":773,"./protocols-table":776,"bs58":58,"buffer":1013,"dup":685,"lodash.map":720,"varint":1003,"xtend":1008}],776:[function(require,module,exports){
+},{}],515:[function(require,module,exports){
+arguments[4][445][0].apply(exports,arguments)
+},{"./convert":516,"./protocols-table":518,"buffer":718,"dup":445,"lodash.filter":454,"lodash.map":462,"varint":708}],516:[function(require,module,exports){
+arguments[4][446][0].apply(exports,arguments)
+},{"./protocols-table":518,"bs58":99,"buffer":718,"dup":446,"ip":207,"varint":708}],517:[function(require,module,exports){
+arguments[4][447][0].apply(exports,arguments)
+},{"./codec":515,"./protocols-table":518,"bs58":99,"buffer":718,"dup":447,"lodash.map":462,"varint":708,"xtend":713}],518:[function(require,module,exports){
 'use strict'
 
 const map = require('lodash.map')
@@ -79531,7 +79018,7 @@ function p (code, size, name, resolvable) {
 
 module.exports = Protocols
 
-},{"lodash.map":720}],777:[function(require,module,exports){
+},{"lodash.map":462}],519:[function(require,module,exports){
 'use strict'
 
 class Base {
@@ -79559,7 +79046,7 @@ class Base {
 
 module.exports = Base
 
-},{}],778:[function(require,module,exports){
+},{}],520:[function(require,module,exports){
 (function (Buffer){
 'use strict'
 
@@ -79583,7 +79070,7 @@ module.exports = function base16 (alphabet) {
 }
 
 }).call(this,require("buffer").Buffer)
-},{"buffer":1013}],779:[function(require,module,exports){
+},{"buffer":718}],521:[function(require,module,exports){
 'use strict'
 
 const Base = require('./base.js')
@@ -79621,7 +79108,7 @@ module.exports = {
   codes: codes
 }
 
-},{"./base.js":777,"./base16":778,"base-x":19}],780:[function(require,module,exports){
+},{"./base.js":519,"./base16":520,"base-x":60}],522:[function(require,module,exports){
 (function (Buffer){
 /**
  * Implementation of the [multibase](https://github.com/multiformats/multibase) specification.
@@ -79761,7 +79248,7 @@ function getBase (nameOrCode) {
 }
 
 }).call(this,require("buffer").Buffer)
-},{"./constants":779,"buffer":1013}],781:[function(require,module,exports){
+},{"./constants":521,"buffer":718}],523:[function(require,module,exports){
 (function (Buffer){
 'use strict'
 
@@ -79855,7 +79342,7 @@ exports['torrent-info'] = new Buffer('7b', 'hex')
 exports['torrent-file'] = new Buffer('7c', 'hex')
 
 }).call(this,require("buffer").Buffer)
-},{"buffer":1013}],782:[function(require,module,exports){
+},{"buffer":718}],524:[function(require,module,exports){
 (function (Buffer){
 /**
  * Implementation of the multicodec specification.
@@ -79922,7 +79409,7 @@ exports.getCodec = (prefixedData) => {
 }
 
 }).call(this,require("buffer").Buffer)
-},{"./name-table":783,"./util":784,"./varint-table":785,"buffer":1013,"varint":1003}],783:[function(require,module,exports){
+},{"./name-table":525,"./util":526,"./varint-table":527,"buffer":718,"varint":708}],525:[function(require,module,exports){
 'use strict'
 const baseTable = require('./base-table')
 
@@ -79936,7 +79423,7 @@ for (let encodingName in baseTable) {
   nameTable[code.toString('hex')] = encodingName
 }
 
-},{"./base-table":781}],784:[function(require,module,exports){
+},{"./base-table":523}],526:[function(require,module,exports){
 (function (Buffer){
 'use strict'
 const varint = require('varint')
@@ -79969,7 +79456,7 @@ function varintBufferDecode (input) {
 }
 
 }).call(this,require("buffer").Buffer)
-},{"buffer":1013,"varint":1003}],785:[function(require,module,exports){
+},{"buffer":718,"varint":708}],527:[function(require,module,exports){
 'use strict'
 const baseTable = require('./base-table')
 const varintBufferEncode = require('./util').varintBufferEncode
@@ -79984,7 +79471,7 @@ for (let encodingName in baseTable) {
   varintTable[encodingName] = varintBufferEncode(code)
 }
 
-},{"./base-table":781,"./util":784}],786:[function(require,module,exports){
+},{"./base-table":523,"./util":526}],528:[function(require,module,exports){
 /* eslint quote-props: off */
 /* eslint key-spacing: off */
 'use strict'
@@ -80333,7 +79820,7 @@ exports.defaultLengths = Object.freeze({
   0xb260: 0x20
 })
 
-},{}],787:[function(require,module,exports){
+},{}],529:[function(require,module,exports){
 (function (Buffer){
 /**
  * Multihash implementation in JavaScript.
@@ -80562,13 +80049,7 @@ exports.prefix = function prefix (multihash) {
 }
 
 }).call(this,require("buffer").Buffer)
-},{"./constants":786,"bs58":58,"buffer":1013,"varint":1003}],788:[function(require,module,exports){
-arguments[4][85][0].apply(exports,arguments)
-},{"./slice":789,"_process":1024,"dup":85}],789:[function(require,module,exports){
-arguments[4][86][0].apply(exports,arguments)
-},{"dup":86}],790:[function(require,module,exports){
-arguments[4][186][0].apply(exports,arguments)
-},{"./internal/setImmediate":788,"dup":186}],791:[function(require,module,exports){
+},{"./constants":528,"bs58":99,"buffer":718,"varint":708}],530:[function(require,module,exports){
 (function (Buffer){
 'use strict'
 
@@ -80607,7 +80088,7 @@ module.exports = (table) => {
 }
 
 }).call(this,require("buffer").Buffer)
-},{"./utils":795,"blakejs":26,"buffer":1013}],792:[function(require,module,exports){
+},{"./utils":534,"blakejs":67,"buffer":718}],531:[function(require,module,exports){
 (function (Buffer){
 'use strict'
 
@@ -80669,7 +80150,7 @@ module.exports = {
 }
 
 }).call(this,require("buffer").Buffer)
-},{"buffer":1013,"nodeify":835}],793:[function(require,module,exports){
+},{"buffer":718,"nodeify":553}],532:[function(require,module,exports){
 'use strict'
 
 const sha3 = require('js-sha3')
@@ -80702,7 +80183,7 @@ module.exports = {
   addBlake: require('./blake')
 }
 
-},{"./blake":791,"./crypto-sha1-2":792,"./utils":795,"js-sha3":504,"murmurhash3js":833}],794:[function(require,module,exports){
+},{"./blake":530,"./crypto-sha1-2":531,"./utils":534,"js-sha3":341,"murmurhash3js":551}],533:[function(require,module,exports){
 (function (Buffer){
 'use strict'
 
@@ -80845,7 +80326,7 @@ Multihashing.functions = {
 crypto.addBlake(Multihashing.functions)
 
 }).call(this,require("buffer").Buffer)
-},{"./crypto":793,"buffer":1013,"multihashes":787}],795:[function(require,module,exports){
+},{"./crypto":532,"buffer":718,"multihashes":529}],534:[function(require,module,exports){
 (function (Buffer){
 'use strict'
 
@@ -80892,11 +80373,7 @@ exports.fromNumberTo32BitBuf = (doWork, other) => (input) => {
 }
 
 }).call(this,require("buffer").Buffer)
-},{"async/setImmediate":790,"buffer":1013}],796:[function(require,module,exports){
-arguments[4][141][0].apply(exports,arguments)
-},{"./debug":797,"_process":1024,"dup":141}],797:[function(require,module,exports){
-arguments[4][142][0].apply(exports,arguments)
-},{"dup":142,"ms":772}],798:[function(require,module,exports){
+},{"async/setImmediate":54,"buffer":718}],535:[function(require,module,exports){
 module.exports = read
 
 var MSB = 0x80
@@ -80928,7 +80405,7 @@ function read(buf, offset) {
   return res
 }
 
-},{}],799:[function(require,module,exports){
+},{}],536:[function(require,module,exports){
 module.exports = encode
 
 var MSB = 0x80
@@ -80956,14 +80433,14 @@ function encode(num, out, offset) {
   return out
 }
 
-},{}],800:[function(require,module,exports){
+},{}],537:[function(require,module,exports){
 module.exports = {
     encode: require('./encode.js')
   , decode: require('./decode.js')
   , encodingLength: require('./length.js')
 }
 
-},{"./decode.js":798,"./encode.js":799,"./length.js":801}],801:[function(require,module,exports){
+},{"./decode.js":535,"./encode.js":536,"./length.js":538}],538:[function(require,module,exports){
 
 var N1 = Math.pow(2,  7)
 var N2 = Math.pow(2, 14)
@@ -80990,7 +80467,7 @@ module.exports = function (value) {
   )
 }
 
-},{}],802:[function(require,module,exports){
+},{}],539:[function(require,module,exports){
 (function (Buffer){
 'use strict'
 /* @flow */
@@ -81188,7 +80665,7 @@ class Channel extends stream.Duplex {
 module.exports = Channel
 
 }).call(this,require("buffer").Buffer)
-},{"buffer":1013,"debug":796,"events":1015,"readable-stream":944}],803:[function(require,module,exports){
+},{"buffer":718,"debug":122,"events":720,"readable-stream":652}],540:[function(require,module,exports){
 (function (Buffer){
 'use strict'
 /* @flow */
@@ -81677,102 +81154,13 @@ class Multiplex extends stream.Duplex {
 module.exports = Multiplex
 
 }).call(this,require("buffer").Buffer)
-},{"./channel":802,"buffer":1013,"debug":796,"duplexify":113,"readable-stream":944,"varint":800}],804:[function(require,module,exports){
-arguments[4][72][0].apply(exports,arguments)
-},{"./internal/initialParams":813,"./internal/setImmediate":817,"dup":72,"lodash/isObject":758}],805:[function(require,module,exports){
-arguments[4][74][0].apply(exports,arguments)
-},{"./eachOfLimit":806,"./internal/breakLoop":807,"./internal/doLimit":809,"./internal/once":815,"./internal/onlyOnce":816,"./internal/wrapAsync":819,"dup":74,"lodash/isArrayLike":754,"lodash/noop":762}],806:[function(require,module,exports){
-arguments[4][75][0].apply(exports,arguments)
-},{"./internal/eachOfLimit":811,"./internal/wrapAsync":819,"dup":75}],807:[function(require,module,exports){
-arguments[4][76][0].apply(exports,arguments)
-},{"dup":76}],808:[function(require,module,exports){
-arguments[4][347][0].apply(exports,arguments)
-},{"./breakLoop":807,"dup":347,"lodash/noop":762}],809:[function(require,module,exports){
-arguments[4][77][0].apply(exports,arguments)
-},{"dup":77}],810:[function(require,module,exports){
-arguments[4][204][0].apply(exports,arguments)
-},{"../eachOf":805,"./wrapAsync":819,"dup":204}],811:[function(require,module,exports){
-arguments[4][78][0].apply(exports,arguments)
-},{"./breakLoop":807,"./iterator":814,"./once":815,"./onlyOnce":816,"dup":78,"lodash/noop":762}],812:[function(require,module,exports){
-arguments[4][79][0].apply(exports,arguments)
-},{"dup":79}],813:[function(require,module,exports){
-arguments[4][80][0].apply(exports,arguments)
-},{"./slice":818,"dup":80}],814:[function(require,module,exports){
-arguments[4][81][0].apply(exports,arguments)
-},{"./getIterator":812,"dup":81,"lodash/isArrayLike":754,"lodash/keys":761}],815:[function(require,module,exports){
-arguments[4][82][0].apply(exports,arguments)
-},{"dup":82}],816:[function(require,module,exports){
-arguments[4][83][0].apply(exports,arguments)
-},{"dup":83}],817:[function(require,module,exports){
-arguments[4][85][0].apply(exports,arguments)
-},{"./slice":818,"_process":1024,"dup":85}],818:[function(require,module,exports){
-arguments[4][86][0].apply(exports,arguments)
-},{"dup":86}],819:[function(require,module,exports){
-arguments[4][88][0].apply(exports,arguments)
-},{"../asyncify":804,"dup":88}],820:[function(require,module,exports){
-'use strict';
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-
-var _createTester = require('./internal/createTester');
-
-var _createTester2 = _interopRequireDefault(_createTester);
-
-var _doParallel = require('./internal/doParallel');
-
-var _doParallel2 = _interopRequireDefault(_doParallel);
-
-var _identity = require('lodash/identity');
-
-var _identity2 = _interopRequireDefault(_identity);
-
-function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
-
-/**
- * Returns `true` if at least one element in the `coll` satisfies an async test.
- * If any iteratee call returns `true`, the main `callback` is immediately
- * called.
- *
- * @name some
- * @static
- * @memberOf module:Collections
- * @method
- * @alias any
- * @category Collection
- * @param {Array|Iterable|Object} coll - A collection to iterate over.
- * @param {AsyncFunction} iteratee - An async truth test to apply to each item
- * in the collections in parallel.
- * The iteratee should complete with a boolean `result` value.
- * Invoked with (item, callback).
- * @param {Function} [callback] - A callback which is called as soon as any
- * iteratee returns `true`, or after all the iteratee functions have finished.
- * Result will be either `true` or `false` depending on the values of the async
- * tests. Invoked with (err, result).
- * @example
- *
- * async.some(['file1','file2','file3'], function(filePath, callback) {
- *     fs.access(filePath, function(err) {
- *         callback(null, !err)
- *     });
- * }, function(err, result) {
- *     // if result is true then at least one of the files exists
- * });
- */
-exports.default = (0, _doParallel2.default)((0, _createTester2.default)(Boolean, _identity2.default));
-module.exports = exports['default'];
-},{"./internal/createTester":808,"./internal/doParallel":810,"lodash/identity":751}],821:[function(require,module,exports){
-arguments[4][141][0].apply(exports,arguments)
-},{"./debug":822,"_process":1024,"dup":141}],822:[function(require,module,exports){
-arguments[4][142][0].apply(exports,arguments)
-},{"dup":142,"ms":772}],823:[function(require,module,exports){
+},{"./channel":539,"buffer":718,"debug":122,"duplexify":134,"readable-stream":652,"varint":537}],541:[function(require,module,exports){
 'use strict'
 
 exports = module.exports
 exports.PROTOCOL_ID = '/multistream/1.0.0'
 
-},{}],824:[function(require,module,exports){
+},{}],542:[function(require,module,exports){
 'use strict'
 
 const varint = require('varint')
@@ -81921,7 +81309,7 @@ function collectLs (conn) {
 
 module.exports = Dialer
 
-},{"../select":831,"../util":832,"./../constants":823,"interface-connection":183,"once":837,"pull-length-prefixed":881,"pull-stream":892,"varint":1003}],825:[function(require,module,exports){
+},{"../select":549,"../util":550,"./../constants":541,"interface-connection":202,"once":554,"pull-length-prefixed":589,"pull-stream":600,"varint":708}],543:[function(require,module,exports){
 'use strict'
 
 exports.Listener = exports.listener = require('./listener')
@@ -81929,7 +81317,7 @@ exports.Dialer = exports.dialer = require('./dialer')
 exports.matchSemver = require('./listener/match-semver')
 exports.matchExact = require('./listener/match-exact')
 
-},{"./dialer":824,"./listener":826,"./listener/match-exact":828,"./listener/match-semver":829}],826:[function(require,module,exports){
+},{"./dialer":542,"./listener":544,"./listener/match-exact":546,"./listener/match-semver":547}],544:[function(require,module,exports){
 'use strict'
 
 const pull = require('pull-stream')
@@ -82042,7 +81430,7 @@ class Listener {
 
 module.exports = Listener
 
-},{"../select":831,"./../constants":823,"./../util":832,"./ls-handler":827,"./match-exact":828,"./select-handler":830,"assert":1010,"interface-connection":183,"lodash.isfunction":719,"pull-stream":892}],827:[function(require,module,exports){
+},{"../select":549,"./../constants":541,"./../util":550,"./ls-handler":545,"./match-exact":546,"./select-handler":548,"assert":715,"interface-connection":202,"lodash.isfunction":461,"pull-stream":600}],545:[function(require,module,exports){
 (function (Buffer){
 'use strict'
 
@@ -82083,7 +81471,7 @@ function lsHandler (self, conn) {
 module.exports = lsHandler
 
 }).call(this,require("buffer").Buffer)
-},{"buffer":1013,"pull-length-prefixed":881,"pull-stream":892,"varint":1003}],828:[function(require,module,exports){
+},{"buffer":718,"pull-length-prefixed":589,"pull-stream":600,"varint":708}],546:[function(require,module,exports){
 'use strict'
 
 /**
@@ -82102,7 +81490,7 @@ function matchExact (myProtocol, senderProtocol, callback) {
 
 module.exports = matchExact
 
-},{}],829:[function(require,module,exports){
+},{}],547:[function(require,module,exports){
 'use strict'
 
 const semver = require('semver')
@@ -82136,7 +81524,7 @@ function matchSemver (myProtocol, senderProtocol, callback) {
 
 module.exports = matchSemver
 
-},{"semver":962}],830:[function(require,module,exports){
+},{"semver":670}],548:[function(require,module,exports){
 (function (Buffer){
 'use strict'
 
@@ -82216,7 +81604,7 @@ function matcher (protocol, handlers, callback) {
 module.exports = selectHandler
 
 }).call(this,require("buffer").Buffer)
-},{"../util.js":832,"async/some":820,"buffer":1013,"interface-connection":183,"pull-handshake":878,"pull-length-prefixed":881}],831:[function(require,module,exports){
+},{"../util.js":550,"async/some":55,"buffer":718,"interface-connection":202,"pull-handshake":586,"pull-length-prefixed":589}],549:[function(require,module,exports){
 (function (Buffer){
 'use strict'
 
@@ -82255,7 +81643,7 @@ function select (multicodec, callback, log) {
 module.exports = select
 
 }).call(this,require("buffer").Buffer)
-},{"./util":832,"buffer":1013,"pull-handshake":878,"pull-length-prefixed":881}],832:[function(require,module,exports){
+},{"./util":550,"buffer":718,"pull-handshake":586,"pull-length-prefixed":589}],550:[function(require,module,exports){
 (function (Buffer){
 'use strict'
 
@@ -82323,10 +81711,10 @@ exports.log.listener = () => {
 }
 
 }).call(this,require("buffer").Buffer)
-},{"buffer":1013,"debug":821,"pull-length-prefixed":881,"pull-stream":892}],833:[function(require,module,exports){
+},{"buffer":718,"debug":122,"pull-length-prefixed":589,"pull-stream":600}],551:[function(require,module,exports){
 module.exports = require('./lib/murmurHash3js');
 
-},{"./lib/murmurHash3js":834}],834:[function(require,module,exports){
+},{"./lib/murmurHash3js":552}],552:[function(require,module,exports){
 /* jshint -W086: true */
 // +----------------------------------------------------------------------+
 // | murmurHash3js.js v3.0.1 // https://github.com/pid/murmurHash3js
@@ -82890,7 +82278,7 @@ module.exports = require('./lib/murmurHash3js');
     }
 })(this);
 
-},{}],835:[function(require,module,exports){
+},{}],553:[function(require,module,exports){
 (function (process){
 var Promise = require('promise');
 var isPromise = require('is-promise');
@@ -82947,13 +82335,7 @@ function NodeifyPromise(fn) {
 NodeifyPromise.prototype = Object.create(Promise.prototype);
 NodeifyPromise.prototype.constructor = NodeifyPromise;
 }).call(this,require('_process'))
-},{"_process":1024,"is-promise":836,"promise":854}],836:[function(require,module,exports){
-module.exports = isPromise;
-
-function isPromise(obj) {
-  return obj && typeof obj.then === 'function';
-}
-},{}],837:[function(require,module,exports){
+},{"_process":729,"is-promise":338,"promise":563}],554:[function(require,module,exports){
 var wrappy = require('wrappy')
 module.exports = wrappy(once)
 module.exports.strict = wrappy(onceStrict)
@@ -82997,7 +82379,7 @@ function onceStrict (fn) {
   return f
 }
 
-},{"wrappy":1007}],838:[function(require,module,exports){
+},{"wrappy":712}],555:[function(require,module,exports){
 /**
  * Compiles a querystring
  * Returns string representation of the object
@@ -83036,7 +82418,7 @@ exports.decode = function(qs){
   return qry;
 };
 
-},{}],839:[function(require,module,exports){
+},{}],556:[function(require,module,exports){
 /**
  * Parses an URI
  *
@@ -83077,7 +82459,7 @@ module.exports = function parseuri(str) {
     return uri;
 };
 
-},{}],840:[function(require,module,exports){
+},{}],557:[function(require,module,exports){
 (function (Buffer){
 'use strict'
 
@@ -83195,24 +82577,8 @@ class PeerBook {
 
 module.exports = PeerBook
 
-}).call(this,{"isBuffer":require("../../../../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js")})
-},{"../../../../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js":1019,"bs58":58,"peer-id":849,"peer-info":850}],841:[function(require,module,exports){
-arguments[4][72][0].apply(exports,arguments)
-},{"./internal/initialParams":842,"./internal/setImmediate":845,"dup":72,"lodash/isObject":758}],842:[function(require,module,exports){
-arguments[4][80][0].apply(exports,arguments)
-},{"./slice":846,"dup":80}],843:[function(require,module,exports){
-arguments[4][82][0].apply(exports,arguments)
-},{"dup":82}],844:[function(require,module,exports){
-arguments[4][83][0].apply(exports,arguments)
-},{"dup":83}],845:[function(require,module,exports){
-arguments[4][85][0].apply(exports,arguments)
-},{"./slice":846,"_process":1024,"dup":85}],846:[function(require,module,exports){
-arguments[4][86][0].apply(exports,arguments)
-},{"dup":86}],847:[function(require,module,exports){
-arguments[4][88][0].apply(exports,arguments)
-},{"../asyncify":841,"dup":88}],848:[function(require,module,exports){
-arguments[4][90][0].apply(exports,arguments)
-},{"./internal/once":843,"./internal/onlyOnce":844,"./internal/slice":846,"./internal/wrapAsync":847,"dup":90,"lodash/isArray":753,"lodash/noop":762}],849:[function(require,module,exports){
+}).call(this,{"isBuffer":require("../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js")})
+},{"../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js":724,"bs58":99,"peer-id":558,"peer-info":559}],558:[function(require,module,exports){
 (function (Buffer){
 /*
  * Id is an object representation of a peer Id. a peer Id is a multihash
@@ -83480,7 +82846,7 @@ function toB64Opt (val) {
 }
 
 }).call(this,require("buffer").Buffer)
-},{"assert":1010,"async/waterfall":848,"buffer":1013,"libp2p-crypto":552,"multihashes":787}],850:[function(require,module,exports){
+},{"assert":715,"async/waterfall":57,"buffer":718,"libp2p-crypto":378,"multihashes":529}],559:[function(require,module,exports){
 'use strict'
 
 const Id = require('peer-id')
@@ -83543,7 +82909,7 @@ PeerInfo.isPeerInfo = (peerInfo) => {
 
 module.exports = PeerInfo
 
-},{"./multiaddr-set":851,"./utils":852,"assert":1010,"peer-id":849}],851:[function(require,module,exports){
+},{"./multiaddr-set":560,"./utils":561,"assert":715,"peer-id":558}],560:[function(require,module,exports){
 'use strict'
 
 const ensureMultiaddr = require('./utils').ensureMultiaddr
@@ -83643,7 +83009,7 @@ class MultiaddrSet {
 
 module.exports = MultiaddrSet
 
-},{"./utils":852,"lodash.uniqby":725}],852:[function(require,module,exports){
+},{"./utils":561,"lodash.uniqby":467}],561:[function(require,module,exports){
 'use strict'
 
 const multiaddr = require('multiaddr')
@@ -83660,7 +83026,7 @@ module.exports = {
   ensureMultiaddr: ensureMultiaddr
 }
 
-},{"multiaddr":775}],853:[function(require,module,exports){
+},{"multiaddr":517}],562:[function(require,module,exports){
 (function (process){
 'use strict';
 
@@ -83707,7 +83073,7 @@ function nextTick(fn, arg1, arg2, arg3) {
 }
 
 }).call(this,require('_process'))
-},{"_process":1024}],854:[function(require,module,exports){
+},{"_process":729}],563:[function(require,module,exports){
 (function (process){
 var isPromise = require('is-promise')
 
@@ -83808,9 +83174,7 @@ Promise.use = function (extension) {
   extensions.push(extension);
 };
 }).call(this,require('_process'))
-},{"_process":1024,"is-promise":855}],855:[function(require,module,exports){
-arguments[4][836][0].apply(exports,arguments)
-},{"dup":836}],856:[function(require,module,exports){
+},{"_process":729,"is-promise":338}],564:[function(require,module,exports){
 /** PROMISIFY CALLBACK-STYLE FUNCTIONS TO ES6 PROMISES
 *
 * EXAMPLE:
@@ -83878,7 +83242,7 @@ if (typeof exports === "undefined") {
     this["promisify"] = module.exports;
 }
 
-},{}],857:[function(require,module,exports){
+},{}],565:[function(require,module,exports){
 var parse = require('./parse')
 var stringify = require('./stringify')
 
@@ -83886,7 +83250,7 @@ module.exports = parse
 module.exports.parse = parse
 module.exports.stringify = stringify
 
-},{"./parse":858,"./stringify":859}],858:[function(require,module,exports){
+},{"./parse":566,"./stringify":567}],566:[function(require,module,exports){
 var tokenize = require('./tokenize')
 var MAX_RANGE = 0x1FFFFFFF
 
@@ -84596,7 +83960,7 @@ var parse = function (buf) {
 
 module.exports = parse
 
-},{"./tokenize":860}],859:[function(require,module,exports){
+},{"./tokenize":568}],567:[function(require,module,exports){
 var onfield = function (f, result) {
   var prefix = f.repeated ? 'repeated' : f.required ? 'required' : 'optional'
   if (f.type === 'map') prefix = 'map<' + f.map.from + ',' + f.map.to + '>'
@@ -84790,7 +84154,7 @@ module.exports = function (schema) {
   return result.map(indent('')).join('\n')
 }
 
-},{}],860:[function(require,module,exports){
+},{}],568:[function(require,module,exports){
 module.exports = function (sch) {
   var noComments = function (line) {
     var i = line.indexOf('//')
@@ -84829,7 +84193,7 @@ module.exports = function (sch) {
     .filter(noMultilineComments())
 }
 
-},{}],861:[function(require,module,exports){
+},{}],569:[function(require,module,exports){
 /* eslint max-depth: 1 */
 'use strict'
 
@@ -85063,7 +84427,7 @@ var defaultValue = function (f, def) {
 
 module.exports = compileDecode
 
-},{"./utils":866,"varint":1003}],862:[function(require,module,exports){
+},{"./utils":574,"varint":708}],570:[function(require,module,exports){
 (function (Buffer){
 'use strict'
 
@@ -85197,7 +84561,7 @@ function compileEncode (m, resolve, enc, oneofs, encodingLength) {
 module.exports = compileEncode
 
 }).call(this,require("buffer").Buffer)
-},{"./utils":866,"buffer":1013,"varint":1003}],863:[function(require,module,exports){
+},{"./utils":574,"buffer":718,"varint":708}],571:[function(require,module,exports){
 'use strict'
 
 var defined = require('./utils').defined
@@ -85301,7 +84665,7 @@ function compileEncodingLength (m, enc, oneofs) {
 
 module.exports = compileEncodingLength
 
-},{"./utils":866,"varint":1003}],864:[function(require,module,exports){
+},{"./utils":574,"varint":708}],572:[function(require,module,exports){
 'use strict'
 
 var varint = require('varint')
@@ -85596,7 +84960,7 @@ exports.float = (function () {
   return encoder(5, encode, decode, encodingLength)
 })()
 
-},{"safe-buffer":948,"signed-varint":971,"varint":1003}],865:[function(require,module,exports){
+},{"safe-buffer":656,"signed-varint":679,"varint":708}],573:[function(require,module,exports){
 'use strict'
 
 var encodings = require('./encodings')
@@ -85763,14 +85127,14 @@ module.exports = function (schema, extraEncodings) {
   }))
 }
 
-},{"./decode":861,"./encode":862,"./encoding-length":863,"./encodings":864,"varint":1003}],866:[function(require,module,exports){
+},{"./decode":569,"./encode":570,"./encoding-length":571,"./encodings":572,"varint":708}],574:[function(require,module,exports){
 'use strict'
 
 exports.defined = function (val) {
   return val !== null && val !== undefined && (typeof val !== 'number' || !isNaN(val))
 }
 
-},{}],867:[function(require,module,exports){
+},{}],575:[function(require,module,exports){
 (function (Buffer){
 'use strict'
 
@@ -85812,10 +85176,10 @@ module.exports = function (proto, opts) {
   return new Messages()
 }
 
-}).call(this,{"isBuffer":require("../../../../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js")})
-},{"../../../../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js":1019,"./compile":865,"protocol-buffers-schema":857}],868:[function(require,module,exports){
-arguments[4][148][0].apply(exports,arguments)
-},{"dup":148}],869:[function(require,module,exports){
+}).call(this,{"isBuffer":require("../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js")})
+},{"../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js":724,"./compile":573,"protocol-buffers-schema":565}],576:[function(require,module,exports){
+arguments[4][167][0].apply(exports,arguments)
+},{"dup":167}],577:[function(require,module,exports){
 'use strict'
 
 const through = require('pull-through')
@@ -85849,7 +85213,7 @@ module.exports = function block (_maxLength) {
   )
 }
 
-},{"pull-through":923}],870:[function(require,module,exports){
+},{"pull-through":631}],578:[function(require,module,exports){
 'use strict'
 
 var through = require('pull-through')
@@ -85938,7 +85302,7 @@ module.exports = function block (size, opts) {
   })
 }
 
-},{"pull-through":923,"safe-buffer":948}],871:[function(require,module,exports){
+},{"pull-through":631,"safe-buffer":656}],579:[function(require,module,exports){
 var noop = function () {}
 
 function abortAll(ary, abort, cb) {
@@ -85981,7 +85345,7 @@ module.exports = function (streams) {
 
 
 
-},{}],872:[function(require,module,exports){
+},{}],580:[function(require,module,exports){
 module.exports = function Catch (onError) {
     onError = onError || function noop () {}
     var errd
@@ -86004,7 +85368,7 @@ module.exports = function Catch (onError) {
     }
 }
 
-},{}],873:[function(require,module,exports){
+},{}],581:[function(require,module,exports){
 
 var Source = require('./source')
 var Sink = require('./sink')
@@ -86027,14 +85391,14 @@ module.exports = function () {
 
 }
 
-},{"./sink":875,"./source":876}],874:[function(require,module,exports){
+},{"./sink":583,"./source":584}],582:[function(require,module,exports){
 
 exports.source = require('./source')
 exports.through = require('./through')
 exports.sink = require('./sink')
 exports.duplex = require('./duplex')
 
-},{"./duplex":873,"./sink":875,"./source":876,"./through":877}],875:[function(require,module,exports){
+},{"./duplex":581,"./sink":583,"./source":584,"./through":585}],583:[function(require,module,exports){
 module.exports = function (stream) {
   var read, started = false, id = Math.random()
 
@@ -86055,7 +85419,7 @@ module.exports = function (stream) {
   return consume
 }
 
-},{}],876:[function(require,module,exports){
+},{}],584:[function(require,module,exports){
 
 module.exports = function () {
   var _read, _cb, abortCb, _end
@@ -86087,7 +85451,7 @@ module.exports = function () {
 }
 
 
-},{}],877:[function(require,module,exports){
+},{}],585:[function(require,module,exports){
 
 module.exports = function () {
   var read, reader, cb, abort, stream
@@ -86117,7 +85481,7 @@ module.exports = function () {
   return delayed
 }
 
-},{}],878:[function(require,module,exports){
+},{}],586:[function(require,module,exports){
 var Reader = require('pull-reader')
 var Writer = require('pull-pushable')
 var cat = require('pull-cat')
@@ -86168,7 +85532,7 @@ module.exports = function (opts, _cb) {
   }
 }
 
-},{"pull-cat":871,"pull-pair":883,"pull-pushable":887,"pull-reader":888}],879:[function(require,module,exports){
+},{"pull-cat":579,"pull-pair":591,"pull-pushable":595,"pull-reader":596}],587:[function(require,module,exports){
 'use strict'
 
 const varint = require('varint')
@@ -86293,7 +85657,7 @@ function readMessage (reader, size, cb) {
   })
 }
 
-},{"pull-pushable":887,"pull-reader":888,"safe-buffer":948,"varint":1003}],880:[function(require,module,exports){
+},{"pull-pushable":595,"pull-reader":596,"safe-buffer":656,"varint":708}],588:[function(require,module,exports){
 'use strict'
 
 const Buffer = require('safe-buffer').Buffer
@@ -86355,7 +85719,7 @@ function createPool () {
   return Buffer.alloc(poolSize)
 }
 
-},{"safe-buffer":948,"varint":1003}],881:[function(require,module,exports){
+},{"safe-buffer":656,"varint":708}],589:[function(require,module,exports){
 'use strict'
 
 const encode = require('./encode')
@@ -86365,7 +85729,7 @@ exports.encode = encode
 exports.decode = d.decode
 exports.decodeFromReader = d.decodeFromReader
 
-},{"./decode":879,"./encode":880}],882:[function(require,module,exports){
+},{"./decode":587,"./encode":588}],590:[function(require,module,exports){
 
 
 /*
@@ -86501,7 +85865,7 @@ module.exports = function (ary) {
 }
 
 
-},{}],883:[function(require,module,exports){
+},{}],591:[function(require,module,exports){
 'use strict'
 
 //a pair of pull streams where one drains from the other
@@ -86533,7 +85897,7 @@ module.exports = function () {
 }
 
 
-},{}],884:[function(require,module,exports){
+},{}],592:[function(require,module,exports){
 var looper = require('looper')
 module.exports = function (map, width, inOrder) {
   inOrder = inOrder === undefined ? true : inOrder
@@ -86603,7 +85967,7 @@ module.exports = function (map, width, inOrder) {
 }
 
 
-},{"looper":885}],885:[function(require,module,exports){
+},{"looper":593}],593:[function(require,module,exports){
 
 
 module.exports = function (fn) {
@@ -86629,7 +85993,7 @@ module.exports = function (fn) {
 
 
 
-},{}],886:[function(require,module,exports){
+},{}],594:[function(require,module,exports){
 
 
 module.exports = function (onPause) {
@@ -86666,7 +86030,7 @@ module.exports = function (onPause) {
 
 
 
-},{}],887:[function(require,module,exports){
+},{}],595:[function(require,module,exports){
 module.exports = pullPushable
 
 function pullPushable (separated, onClose) {
@@ -86755,7 +86119,7 @@ function pullPushable (separated, onClose) {
   }
 }
 
-},{}],888:[function(require,module,exports){
+},{}],596:[function(require,module,exports){
 'use strict'
 var State = require('./state')
 
@@ -86879,7 +86243,7 @@ module.exports = function (timeout) {
 
 
 
-},{"./state":889}],889:[function(require,module,exports){
+},{"./state":597}],597:[function(require,module,exports){
 (function (Buffer){
 
 module.exports = function () {
@@ -86956,7 +86320,7 @@ module.exports = function () {
 
 
 }).call(this,require("buffer").Buffer)
-},{"buffer":1013}],890:[function(require,module,exports){
+},{"buffer":718}],598:[function(require,module,exports){
 
 var Source = require('pull-defer/source')
 var pull = require('pull-stream')
@@ -86976,7 +86340,7 @@ module.exports = function (compare) {
 
 }
 
-},{"pull-defer/source":876,"pull-stream":892}],891:[function(require,module,exports){
+},{"pull-defer/source":584,"pull-stream":600}],599:[function(require,module,exports){
 (function (process){
 
 var Stream = require('stream')
@@ -87130,7 +86494,7 @@ function duplex (reader, read) {
 }
 
 }).call(this,require('_process'))
-},{"_process":1024,"stream":1043}],892:[function(require,module,exports){
+},{"_process":729,"stream":748}],600:[function(require,module,exports){
 'use strict'
 
 var sources  = require('./sources')
@@ -87151,7 +86515,7 @@ for(var k in sinks)
   exports[k] = sinks[k]
 
 
-},{"./pull":893,"./sinks":898,"./sources":905,"./throughs":914}],893:[function(require,module,exports){
+},{"./pull":601,"./sinks":606,"./sources":613,"./throughs":622}],601:[function(require,module,exports){
 'use strict'
 
 module.exports = function pull (a) {
@@ -87202,7 +86566,7 @@ module.exports = function pull (a) {
   return read
 }
 
-},{}],894:[function(require,module,exports){
+},{}],602:[function(require,module,exports){
 'use strict'
 
 var reduce = require('./reduce')
@@ -87214,7 +86578,7 @@ module.exports = function collect (cb) {
   }, [], cb)
 }
 
-},{"./reduce":901}],895:[function(require,module,exports){
+},{"./reduce":609}],603:[function(require,module,exports){
 'use strict'
 
 var reduce = require('./reduce')
@@ -87225,7 +86589,7 @@ module.exports = function concat (cb) {
   }, '', cb)
 }
 
-},{"./reduce":901}],896:[function(require,module,exports){
+},{"./reduce":609}],604:[function(require,module,exports){
 'use strict'
 
 module.exports = function drain (op, done) {
@@ -87275,7 +86639,7 @@ module.exports = function drain (op, done) {
   return sink
 }
 
-},{}],897:[function(require,module,exports){
+},{}],605:[function(require,module,exports){
 'use strict'
 
 function id (e) { return e }
@@ -87305,7 +86669,7 @@ module.exports = function find (test, cb) {
 
 
 
-},{"../util/prop":921,"./drain":896}],898:[function(require,module,exports){
+},{"../util/prop":629,"./drain":604}],606:[function(require,module,exports){
 'use strict'
 
 module.exports = {
@@ -87319,7 +86683,7 @@ module.exports = {
 }
 
 
-},{"./collect":894,"./concat":895,"./drain":896,"./find":897,"./log":899,"./on-end":900,"./reduce":901}],899:[function(require,module,exports){
+},{"./collect":602,"./concat":603,"./drain":604,"./find":605,"./log":607,"./on-end":608,"./reduce":609}],607:[function(require,module,exports){
 'use strict'
 
 var drain = require('./drain')
@@ -87330,7 +86694,7 @@ module.exports = function log (done) {
   }, done)
 }
 
-},{"./drain":896}],900:[function(require,module,exports){
+},{"./drain":604}],608:[function(require,module,exports){
 'use strict'
 
 var drain = require('./drain')
@@ -87339,7 +86703,7 @@ module.exports = function onEnd (done) {
   return drain(null, done)
 }
 
-},{"./drain":896}],901:[function(require,module,exports){
+},{"./drain":604}],609:[function(require,module,exports){
 'use strict'
 
 var drain = require('./drain')
@@ -87363,7 +86727,7 @@ module.exports = function reduce (reducer, acc, cb ) {
     return sink
 }
 
-},{"./drain":896}],902:[function(require,module,exports){
+},{"./drain":604}],610:[function(require,module,exports){
 'use strict'
 
 module.exports = function count (max) {
@@ -87378,7 +86742,7 @@ module.exports = function count (max) {
 
 
 
-},{}],903:[function(require,module,exports){
+},{}],611:[function(require,module,exports){
 'use strict'
 //a stream that ends immediately.
 module.exports = function empty () {
@@ -87387,7 +86751,7 @@ module.exports = function empty () {
   }
 }
 
-},{}],904:[function(require,module,exports){
+},{}],612:[function(require,module,exports){
 'use strict'
 //a stream that errors immediately.
 module.exports = function error (err) {
@@ -87397,7 +86761,7 @@ module.exports = function error (err) {
 }
 
 
-},{}],905:[function(require,module,exports){
+},{}],613:[function(require,module,exports){
 'use strict'
 module.exports = {
   keys: require('./keys'),
@@ -87409,7 +86773,7 @@ module.exports = {
   error: require('./error')
 }
 
-},{"./count":902,"./empty":903,"./error":904,"./infinite":906,"./keys":907,"./once":908,"./values":909}],906:[function(require,module,exports){
+},{"./count":610,"./empty":611,"./error":612,"./infinite":614,"./keys":615,"./once":616,"./values":617}],614:[function(require,module,exports){
 'use strict'
 module.exports = function infinite (generate) {
   generate = generate || Math.random
@@ -87421,7 +86785,7 @@ module.exports = function infinite (generate) {
 
 
 
-},{}],907:[function(require,module,exports){
+},{}],615:[function(require,module,exports){
 'use strict'
 var values = require('./values')
 module.exports = function (object) {
@@ -87430,7 +86794,7 @@ module.exports = function (object) {
 
 
 
-},{"./values":909}],908:[function(require,module,exports){
+},{"./values":617}],616:[function(require,module,exports){
 'use strict'
 var abortCb = require('../util/abort-cb')
 
@@ -87448,7 +86812,7 @@ module.exports = function once (value, onAbort) {
 
 
 
-},{"../util/abort-cb":920}],909:[function(require,module,exports){
+},{"../util/abort-cb":628}],617:[function(require,module,exports){
 'use strict'
 var abortCb = require('../util/abort-cb')
 
@@ -87473,7 +86837,7 @@ module.exports = function values (array, onAbort) {
   }
 }
 
-},{"../util/abort-cb":920}],910:[function(require,module,exports){
+},{"../util/abort-cb":628}],618:[function(require,module,exports){
 'use strict'
 
 function id (e) { return e }
@@ -87518,7 +86882,7 @@ module.exports = function asyncMap (map) {
 
 
 
-},{"../util/prop":921}],911:[function(require,module,exports){
+},{"../util/prop":629}],619:[function(require,module,exports){
 'use strict'
 
 var tester = require('../util/tester')
@@ -87529,7 +86893,7 @@ module.exports = function filterNot (test) {
   return filter(function (data) { return !test(data) })
 }
 
-},{"../util/tester":922,"./filter":912}],912:[function(require,module,exports){
+},{"../util/tester":630,"./filter":620}],620:[function(require,module,exports){
 'use strict'
 
 var tester = require('../util/tester')
@@ -87555,7 +86919,7 @@ module.exports = function filter (test) {
 }
 
 
-},{"../util/tester":922}],913:[function(require,module,exports){
+},{"../util/tester":630}],621:[function(require,module,exports){
 'use strict'
 
 var values = require('../sources/values')
@@ -87604,7 +86968,7 @@ module.exports = function flatten () {
 }
 
 
-},{"../sources/once":908,"../sources/values":909}],914:[function(require,module,exports){
+},{"../sources/once":616,"../sources/values":617}],622:[function(require,module,exports){
 'use strict'
 
 module.exports = {
@@ -87622,7 +86986,7 @@ module.exports = {
 
 
 
-},{"./async-map":910,"./filter":912,"./filter-not":911,"./flatten":913,"./map":915,"./non-unique":916,"./take":917,"./through":918,"./unique":919}],915:[function(require,module,exports){
+},{"./async-map":618,"./filter":620,"./filter-not":619,"./flatten":621,"./map":623,"./non-unique":624,"./take":625,"./through":626,"./unique":627}],623:[function(require,module,exports){
 'use strict'
 
 function id (e) { return e }
@@ -87647,7 +87011,7 @@ module.exports = function map (mapper) {
   }
 }
 
-},{"../util/prop":921}],916:[function(require,module,exports){
+},{"../util/prop":629}],624:[function(require,module,exports){
 'use strict'
 
 var unique = require('./unique')
@@ -87657,7 +87021,7 @@ module.exports = function nonUnique (field) {
   return unique(field, true)
 }
 
-},{"./unique":919}],917:[function(require,module,exports){
+},{"./unique":627}],625:[function(require,module,exports){
 'use strict'
 
 //read a number of items and then stop.
@@ -87700,7 +87064,7 @@ module.exports = function take (test, opts) {
   }
 }
 
-},{}],918:[function(require,module,exports){
+},{}],626:[function(require,module,exports){
 'use strict'
 
 //a pass through stream that doesn't change the value.
@@ -87725,7 +87089,7 @@ module.exports = function through (op, onEnd) {
   }
 }
 
-},{}],919:[function(require,module,exports){
+},{}],627:[function(require,module,exports){
 'use strict'
 
 function id (e) { return e }
@@ -87745,7 +87109,7 @@ module.exports = function unique (field, invert) {
 }
 
 
-},{"../util/prop":921,"./filter":912}],920:[function(require,module,exports){
+},{"../util/prop":629,"./filter":620}],628:[function(require,module,exports){
 module.exports = function abortCb(cb, abort, onAbort) {
   cb(abort)
   onAbort && onAbort(abort === true ? null: abort)
@@ -87753,7 +87117,7 @@ module.exports = function abortCb(cb, abort, onAbort) {
 }
 
 
-},{}],921:[function(require,module,exports){
+},{}],629:[function(require,module,exports){
 module.exports = function prop (key) {
   return key && (
     'string' == typeof key
@@ -87764,7 +87128,7 @@ module.exports = function prop (key) {
   )
 }
 
-},{}],922:[function(require,module,exports){
+},{}],630:[function(require,module,exports){
 var prop = require('./prop')
 
 function id (e) { return e }
@@ -87777,7 +87141,7 @@ module.exports = function tester (test) {
   )
 }
 
-},{"./prop":921}],923:[function(require,module,exports){
+},{"./prop":629}],631:[function(require,module,exports){
 var looper = require('looper')
 
 module.exports = function (writer, ender) {
@@ -87848,7 +87212,7 @@ module.exports = function (writer, ender) {
 }
 
 
-},{"looper":764}],924:[function(require,module,exports){
+},{"looper":506}],632:[function(require,module,exports){
 
 var once = exports.once =
 function (value) {
@@ -87941,7 +87305,7 @@ function (start, createStream) {
 }
 
 
-},{}],925:[function(require,module,exports){
+},{}],633:[function(require,module,exports){
 //another idea: buffer 2* the max, but only call write with half of that,
 //this could manage cases where the read ahead is latent. Hmm, we probably
 //shouldn't guess at that here, just handle write latency.
@@ -88033,9 +87397,9 @@ module.exports = function (write, reduce, max, cb) {
 }
 
 
-},{"looper":926}],926:[function(require,module,exports){
-arguments[4][885][0].apply(exports,arguments)
-},{"dup":885}],927:[function(require,module,exports){
+},{"looper":634}],634:[function(require,module,exports){
+arguments[4][593][0].apply(exports,arguments)
+},{"dup":593}],635:[function(require,module,exports){
 'use strict';
 
 //load websocket library if we are not in the browser
@@ -88075,7 +87439,7 @@ module.exports = function (addr, opts) {
 
 module.exports.connect = module.exports
 
-},{"./duplex":928,"./web-socket":932,"./ws-url":933}],928:[function(require,module,exports){
+},{"./duplex":636,"./web-socket":640,"./ws-url":641}],636:[function(require,module,exports){
 var source = require('./source')
 var sink = require('./sink')
 
@@ -88100,7 +87464,7 @@ function duplex (ws, opts) {
 };
 
 
-},{"./sink":930,"./source":931}],929:[function(require,module,exports){
+},{"./sink":638,"./source":639}],637:[function(require,module,exports){
 module.exports = function(socket, callback) {
   var remove = socket && (socket.removeEventListener || socket.removeListener);
 
@@ -88133,7 +87497,7 @@ module.exports = function(socket, callback) {
   socket.addEventListener('error', handleErr);
 };
 
-},{}],930:[function(require,module,exports){
+},{}],638:[function(require,module,exports){
 (function (process){
 var ready = require('./ready');
 
@@ -88191,7 +87555,7 @@ module.exports = function(socket, opts) {
 }
 
 }).call(this,require('_process'))
-},{"./ready":929,"_process":1024}],931:[function(require,module,exports){
+},{"./ready":637,"_process":729}],639:[function(require,module,exports){
 /**
   ### `source(socket)`
 
@@ -88279,11 +87643,11 @@ module.exports = function(socket, cb) {
   return read;
 };
 
-},{"safe-buffer":948}],932:[function(require,module,exports){
+},{"safe-buffer":656}],640:[function(require,module,exports){
 
 module.exports = 'undefined' === typeof WebSocket ? require('ws') : WebSocket
 
-},{"ws":1012}],933:[function(require,module,exports){
+},{"ws":717}],641:[function(require,module,exports){
 var rurl = require('relative-url')
 var map = {http:'ws', https:'wss'}
 var def = 'ws'
@@ -88293,7 +87657,7 @@ module.exports = function (url, location) {
 
 
 
-},{"relative-url":945}],934:[function(require,module,exports){
+},{"relative-url":653}],642:[function(require,module,exports){
 var once = require('once')
 var eos = require('end-of-stream')
 var fs = require('fs') // we only need fs to get the ReadStream and WriteStream prototypes
@@ -88375,7 +87739,7 @@ var pump = function () {
 
 module.exports = pump
 
-},{"end-of-stream":130,"fs":1012,"once":837}],935:[function(require,module,exports){
+},{"end-of-stream":151,"fs":717,"once":554}],643:[function(require,module,exports){
 (function (process,global){
 'use strict'
 
@@ -88417,7 +87781,7 @@ function randomBytes (size, cb) {
 }
 
 }).call(this,require('_process'),typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"_process":1024,"safe-buffer":948}],936:[function(require,module,exports){
+},{"_process":729,"safe-buffer":656}],644:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -88542,7 +87906,7 @@ function forEach(xs, f) {
     f(xs[i], i);
   }
 }
-},{"./_stream_readable":938,"./_stream_writable":940,"core-util-is":66,"inherits":181,"process-nextick-args":853}],937:[function(require,module,exports){
+},{"./_stream_readable":646,"./_stream_writable":648,"core-util-is":107,"inherits":200,"process-nextick-args":562}],645:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -88590,7 +87954,7 @@ function PassThrough(options) {
 PassThrough.prototype._transform = function (chunk, encoding, cb) {
   cb(null, chunk);
 };
-},{"./_stream_transform":939,"core-util-is":66,"inherits":181}],938:[function(require,module,exports){
+},{"./_stream_transform":647,"core-util-is":107,"inherits":200}],646:[function(require,module,exports){
 (function (process,global){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -89600,7 +88964,7 @@ function indexOf(xs, x) {
   return -1;
 }
 }).call(this,require('_process'),typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./_stream_duplex":936,"./internal/streams/BufferList":941,"./internal/streams/destroy":942,"./internal/streams/stream":943,"_process":1024,"core-util-is":66,"events":1015,"inherits":181,"isarray":503,"process-nextick-args":853,"safe-buffer":948,"string_decoder/":993,"util":1012}],939:[function(require,module,exports){
+},{"./_stream_duplex":644,"./internal/streams/BufferList":649,"./internal/streams/destroy":650,"./internal/streams/stream":651,"_process":729,"core-util-is":107,"events":720,"inherits":200,"isarray":340,"process-nextick-args":562,"safe-buffer":656,"string_decoder/":695,"util":717}],647:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -89815,7 +89179,7 @@ function done(stream, er, data) {
 
   return stream.push(null);
 }
-},{"./_stream_duplex":936,"core-util-is":66,"inherits":181}],940:[function(require,module,exports){
+},{"./_stream_duplex":644,"core-util-is":107,"inherits":200}],648:[function(require,module,exports){
 (function (process,global){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -90482,7 +89846,7 @@ Writable.prototype._destroy = function (err, cb) {
   cb(err);
 };
 }).call(this,require('_process'),typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./_stream_duplex":936,"./internal/streams/destroy":942,"./internal/streams/stream":943,"_process":1024,"core-util-is":66,"inherits":181,"process-nextick-args":853,"safe-buffer":948,"util-deprecate":999}],941:[function(require,module,exports){
+},{"./_stream_duplex":644,"./internal/streams/destroy":650,"./internal/streams/stream":651,"_process":729,"core-util-is":107,"inherits":200,"process-nextick-args":562,"safe-buffer":656,"util-deprecate":701}],649:[function(require,module,exports){
 'use strict';
 
 /*<replacement>*/
@@ -90557,7 +89921,7 @@ module.exports = function () {
 
   return BufferList;
 }();
-},{"safe-buffer":948}],942:[function(require,module,exports){
+},{"safe-buffer":656}],650:[function(require,module,exports){
 'use strict';
 
 /*<replacement>*/
@@ -90630,10 +89994,10 @@ module.exports = {
   destroy: destroy,
   undestroy: undestroy
 };
-},{"process-nextick-args":853}],943:[function(require,module,exports){
+},{"process-nextick-args":562}],651:[function(require,module,exports){
 module.exports = require('events').EventEmitter;
 
-},{"events":1015}],944:[function(require,module,exports){
+},{"events":720}],652:[function(require,module,exports){
 exports = module.exports = require('./lib/_stream_readable.js');
 exports.Stream = exports;
 exports.Readable = exports;
@@ -90642,7 +90006,7 @@ exports.Duplex = require('./lib/_stream_duplex.js');
 exports.Transform = require('./lib/_stream_transform.js');
 exports.PassThrough = require('./lib/_stream_passthrough.js');
 
-},{"./lib/_stream_duplex.js":936,"./lib/_stream_passthrough.js":937,"./lib/_stream_readable.js":938,"./lib/_stream_transform.js":939,"./lib/_stream_writable.js":940}],945:[function(require,module,exports){
+},{"./lib/_stream_duplex.js":644,"./lib/_stream_passthrough.js":645,"./lib/_stream_readable.js":646,"./lib/_stream_transform.js":647,"./lib/_stream_writable.js":648}],653:[function(require,module,exports){
 
 //normalize a ws url.
 var URL = require('url')
@@ -90740,7 +90104,7 @@ module.exports = function (url, location, protocolMap, defaultProtocol) {
 
 
 
-},{"url":1045}],946:[function(require,module,exports){
+},{"url":750}],654:[function(require,module,exports){
 (function (Buffer){
 'use strict'
 var inherits = require('inherits')
@@ -91035,7 +90399,7 @@ function fn5 (a, b, c, d, e, m, k, s) {
 module.exports = RIPEMD160
 
 }).call(this,require("buffer").Buffer)
-},{"buffer":1013,"hash-base":164,"inherits":181}],947:[function(require,module,exports){
+},{"buffer":718,"hash-base":183,"inherits":200}],655:[function(require,module,exports){
 (function (Buffer){
 const assert = require('assert')
 /**
@@ -91268,7 +90632,7 @@ function toBuffer (v) {
 }
 
 }).call(this,require("buffer").Buffer)
-},{"assert":1010,"buffer":1013}],948:[function(require,module,exports){
+},{"assert":715,"buffer":718}],656:[function(require,module,exports){
 /* eslint-disable node/no-deprecated-api */
 var buffer = require('buffer')
 var Buffer = buffer.Buffer
@@ -91332,15 +90696,15 @@ SafeBuffer.allocUnsafeSlow = function (size) {
   return buffer.SlowBuffer(size)
 }
 
-},{"buffer":1013}],949:[function(require,module,exports){
+},{"buffer":718}],657:[function(require,module,exports){
 'use strict'
 module.exports = require('./lib')(require('./lib/elliptic'))
 
-},{"./lib":954,"./lib/elliptic":953}],950:[function(require,module,exports){
+},{"./lib":662,"./lib/elliptic":661}],658:[function(require,module,exports){
 'use strict'
 module.exports = require('./lib')(require('./lib/js'))
 
-},{"./lib":954,"./lib/js":960}],951:[function(require,module,exports){
+},{"./lib":662,"./lib/js":668}],659:[function(require,module,exports){
 (function (Buffer){
 'use strict'
 var toString = Object.prototype.toString
@@ -91387,8 +90751,8 @@ exports.isNumberInInterval = function (number, x, y, message) {
   if (number <= x || number >= y) throw RangeError(message)
 }
 
-}).call(this,{"isBuffer":require("../../../../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js")})
-},{"../../../../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js":1019}],952:[function(require,module,exports){
+}).call(this,{"isBuffer":require("../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js")})
+},{"../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js":724}],660:[function(require,module,exports){
 'use strict'
 var Buffer = require('safe-buffer').Buffer
 var bip66 = require('bip66')
@@ -91588,7 +90952,7 @@ exports.signatureImportLax = function (sig) {
   return { r: r, s: s }
 }
 
-},{"bip66":23,"safe-buffer":948}],953:[function(require,module,exports){
+},{"bip66":64,"safe-buffer":656}],661:[function(require,module,exports){
 'use strict'
 var Buffer = require('safe-buffer').Buffer
 var createHash = require('create-hash')
@@ -91838,7 +91202,7 @@ exports.ecdhUnsafe = function (publicKey, privateKey, compressed) {
   return Buffer.from(pair.pub.mul(scalar).encode(true, compressed))
 }
 
-},{"../messages.json":961,"bn.js":29,"create-hash":67,"elliptic":114,"safe-buffer":948}],954:[function(require,module,exports){
+},{"../messages.json":669,"bn.js":70,"create-hash":108,"elliptic":135,"safe-buffer":656}],662:[function(require,module,exports){
 'use strict'
 var assert = require('./assert')
 var der = require('./der')
@@ -92071,7 +91435,7 @@ module.exports = function (secp256k1) {
   }
 }
 
-},{"./assert":951,"./der":952,"./messages.json":961}],955:[function(require,module,exports){
+},{"./assert":659,"./der":660,"./messages.json":669}],663:[function(require,module,exports){
 'use strict'
 var Buffer = require('safe-buffer').Buffer
 var optimized = require('./optimized')
@@ -92735,7 +92099,7 @@ BN.tmp.words = new Array(10)
 
 module.exports = BN
 
-},{"./optimized":956,"safe-buffer":948}],956:[function(require,module,exports){
+},{"./optimized":664,"safe-buffer":656}],664:[function(require,module,exports){
 'use strict'
 exports.umulTo10x10 = function (num1, num2, out) {
   var a = num1.words
@@ -93309,7 +92673,7 @@ exports.umulTo10x10 = function (num1, num2, out) {
   return out
 }
 
-},{}],957:[function(require,module,exports){
+},{}],665:[function(require,module,exports){
 'use strict'
 var BN = require('./bn')
 
@@ -93490,7 +92854,7 @@ Object.defineProperty(ECJPoint.prototype, 'inf', {
 
 module.exports = ECJPoint
 
-},{"./bn":955}],958:[function(require,module,exports){
+},{"./bn":663}],666:[function(require,module,exports){
 'use strict'
 var Buffer = require('safe-buffer').Buffer
 var BN = require('./bn')
@@ -93674,7 +93038,7 @@ ECPoint.prototype._getNAFPoints = function (wnd) {
 
 module.exports = ECPoint
 
-},{"./bn":955,"./ecjpoint":957,"safe-buffer":948}],959:[function(require,module,exports){
+},{"./bn":663,"./ecjpoint":665,"safe-buffer":656}],667:[function(require,module,exports){
 'use strict'
 var Buffer = require('safe-buffer').Buffer
 var BN = require('./bn')
@@ -93792,7 +93156,7 @@ ECPointG.prototype.mulAdd = function (k1, p2, k2) {
 
 module.exports = new ECPointG()
 
-},{"./bn":955,"./ecjpoint":957,"./ecpoint":958,"safe-buffer":948}],960:[function(require,module,exports){
+},{"./bn":663,"./ecjpoint":665,"./ecpoint":666,"safe-buffer":656}],668:[function(require,module,exports){
 'use strict'
 var Buffer = require('safe-buffer').Buffer
 var createHash = require('create-hash')
@@ -94019,7 +93383,7 @@ exports.ecdhUnsafe = function (publicKey, privateKey, compressed) {
   return point.mul(scalar).toPublicKey(compressed)
 }
 
-},{"../messages.json":961,"./bn":955,"./ecpoint":958,"./ecpointg":959,"create-hash":67,"drbg.js/hmac":111,"safe-buffer":948}],961:[function(require,module,exports){
+},{"../messages.json":669,"./bn":663,"./ecpoint":666,"./ecpointg":667,"create-hash":108,"drbg.js/hmac":132,"safe-buffer":656}],669:[function(require,module,exports){
 module.exports={
   "COMPRESSED_TYPE_INVALID": "compressed should be a boolean",
   "EC_PRIVATE_KEY_TYPE_INVALID": "private key should be a Buffer",
@@ -94057,7 +93421,7 @@ module.exports={
   "TWEAK_LENGTH_INVALID": "tweak length is invalid"
 }
 
-},{}],962:[function(require,module,exports){
+},{}],670:[function(require,module,exports){
 (function (process){
 exports = module.exports = SemVer;
 
@@ -95357,7 +94721,7 @@ function intersects(r1, r2, loose) {
 }
 
 }).call(this,require('_process'))
-},{"_process":1024}],963:[function(require,module,exports){
+},{"_process":729}],671:[function(require,module,exports){
 var Buffer = require('safe-buffer').Buffer
 
 // prototype class for hash functions
@@ -95440,7 +94804,7 @@ Hash.prototype._update = function () {
 
 module.exports = Hash
 
-},{"safe-buffer":948}],964:[function(require,module,exports){
+},{"safe-buffer":656}],672:[function(require,module,exports){
 var exports = module.exports = function SHA (algorithm) {
   algorithm = algorithm.toLowerCase()
 
@@ -95457,7 +94821,7 @@ exports.sha256 = require('./sha256')
 exports.sha384 = require('./sha384')
 exports.sha512 = require('./sha512')
 
-},{"./sha":965,"./sha1":966,"./sha224":967,"./sha256":968,"./sha384":969,"./sha512":970}],965:[function(require,module,exports){
+},{"./sha":673,"./sha1":674,"./sha224":675,"./sha256":676,"./sha384":677,"./sha512":678}],673:[function(require,module,exports){
 /*
  * A JavaScript implementation of the Secure Hash Algorithm, SHA-0, as defined
  * in FIPS PUB 180-1
@@ -95553,7 +94917,7 @@ Sha.prototype._hash = function () {
 
 module.exports = Sha
 
-},{"./hash":963,"inherits":181,"safe-buffer":948}],966:[function(require,module,exports){
+},{"./hash":671,"inherits":200,"safe-buffer":656}],674:[function(require,module,exports){
 /*
  * A JavaScript implementation of the Secure Hash Algorithm, SHA-1, as defined
  * in FIPS PUB 180-1
@@ -95654,7 +95018,7 @@ Sha1.prototype._hash = function () {
 
 module.exports = Sha1
 
-},{"./hash":963,"inherits":181,"safe-buffer":948}],967:[function(require,module,exports){
+},{"./hash":671,"inherits":200,"safe-buffer":656}],675:[function(require,module,exports){
 /**
  * A JavaScript implementation of the Secure Hash Algorithm, SHA-256, as defined
  * in FIPS 180-2
@@ -95709,7 +95073,7 @@ Sha224.prototype._hash = function () {
 
 module.exports = Sha224
 
-},{"./hash":963,"./sha256":968,"inherits":181,"safe-buffer":948}],968:[function(require,module,exports){
+},{"./hash":671,"./sha256":676,"inherits":200,"safe-buffer":656}],676:[function(require,module,exports){
 /**
  * A JavaScript implementation of the Secure Hash Algorithm, SHA-256, as defined
  * in FIPS 180-2
@@ -95846,7 +95210,7 @@ Sha256.prototype._hash = function () {
 
 module.exports = Sha256
 
-},{"./hash":963,"inherits":181,"safe-buffer":948}],969:[function(require,module,exports){
+},{"./hash":671,"inherits":200,"safe-buffer":656}],677:[function(require,module,exports){
 var inherits = require('inherits')
 var SHA512 = require('./sha512')
 var Hash = require('./hash')
@@ -95905,7 +95269,7 @@ Sha384.prototype._hash = function () {
 
 module.exports = Sha384
 
-},{"./hash":963,"./sha512":970,"inherits":181,"safe-buffer":948}],970:[function(require,module,exports){
+},{"./hash":671,"./sha512":678,"inherits":200,"safe-buffer":656}],678:[function(require,module,exports){
 var inherits = require('inherits')
 var Hash = require('./hash')
 var Buffer = require('safe-buffer').Buffer
@@ -96167,7 +95531,7 @@ Sha512.prototype._hash = function () {
 
 module.exports = Sha512
 
-},{"./hash":963,"inherits":181,"safe-buffer":948}],971:[function(require,module,exports){
+},{"./hash":671,"inherits":200,"safe-buffer":656}],679:[function(require,module,exports){
 var varint = require('varint')
 exports.encode = function encode (v, b, o) {
   v = v >= 0 ? v*2 : v*-2 - 1
@@ -96185,7 +95549,7 @@ exports.encodingLength = function (v) {
   return varint.encodingLength(v >= 0 ? v*2 : v*-2 - 1)
 }
 
-},{"varint":1003}],972:[function(require,module,exports){
+},{"varint":708}],680:[function(require,module,exports){
 (function (Buffer){
 module.exports = Peer
 
@@ -96991,11 +96355,7 @@ Peer.prototype._transformConstraints = function (constraints) {
 function noop () {}
 
 }).call(this,require("buffer").Buffer)
-},{"buffer":1013,"debug":973,"get-browser-rtc":160,"inherits":181,"randombytes":935,"readable-stream":944}],973:[function(require,module,exports){
-arguments[4][141][0].apply(exports,arguments)
-},{"./debug":974,"_process":1024,"dup":141}],974:[function(require,module,exports){
-arguments[4][142][0].apply(exports,arguments)
-},{"dup":142,"ms":772}],975:[function(require,module,exports){
+},{"buffer":718,"debug":122,"get-browser-rtc":179,"inherits":200,"randombytes":643,"readable-stream":652}],681:[function(require,module,exports){
 (function (Buffer){
 "use strict";
 // The default Buffer size if one is not provided.
@@ -97735,7 +97095,7 @@ class SmartBuffer {
 exports.SmartBuffer = SmartBuffer;
 
 }).call(this,require("buffer").Buffer)
-},{"buffer":1013}],976:[function(require,module,exports){
+},{"buffer":718}],682:[function(require,module,exports){
 
 /**
  * Module dependencies.
@@ -97831,7 +97191,7 @@ exports.connect = lookup;
 exports.Manager = require('./manager');
 exports.Socket = require('./socket');
 
-},{"./manager":977,"./socket":979,"./url":980,"debug":981,"socket.io-parser":984}],977:[function(require,module,exports){
+},{"./manager":683,"./socket":685,"./url":686,"debug":122,"socket.io-parser":688}],683:[function(require,module,exports){
 
 /**
  * Module dependencies.
@@ -98406,7 +97766,7 @@ Manager.prototype.onreconnect = function () {
   this.emitAll('reconnect', attempt);
 };
 
-},{"./on":978,"./socket":979,"backo2":18,"component-bind":63,"component-emitter":64,"debug":981,"engine.io-client":131,"indexof":180,"socket.io-parser":984}],978:[function(require,module,exports){
+},{"./on":684,"./socket":685,"backo2":59,"component-bind":104,"component-emitter":105,"debug":122,"engine.io-client":152,"indexof":199,"socket.io-parser":688}],684:[function(require,module,exports){
 
 /**
  * Module exports.
@@ -98432,7 +97792,7 @@ function on (obj, ev, fn) {
   };
 }
 
-},{}],979:[function(require,module,exports){
+},{}],685:[function(require,module,exports){
 
 /**
  * Module dependencies.
@@ -98852,7 +98212,7 @@ Socket.prototype.compress = function (compress) {
   return this;
 };
 
-},{"./on":978,"component-bind":63,"component-emitter":64,"debug":981,"parseqs":838,"socket.io-parser":984,"to-array":996}],980:[function(require,module,exports){
+},{"./on":684,"component-bind":104,"component-emitter":105,"debug":122,"parseqs":555,"socket.io-parser":688,"to-array":698}],686:[function(require,module,exports){
 (function (global){
 
 /**
@@ -98931,11 +98291,7 @@ function url (uri, loc) {
 }
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"debug":981,"parseuri":839}],981:[function(require,module,exports){
-arguments[4][141][0].apply(exports,arguments)
-},{"./debug":982,"_process":1024,"dup":141}],982:[function(require,module,exports){
-arguments[4][142][0].apply(exports,arguments)
-},{"dup":142,"ms":772}],983:[function(require,module,exports){
+},{"debug":122,"parseuri":556}],687:[function(require,module,exports){
 (function (global){
 /*global Blob,File*/
 
@@ -99080,7 +98436,7 @@ exports.removeBlobs = function(data, callback) {
 };
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./is-buffer":985,"isarray":988}],984:[function(require,module,exports){
+},{"./is-buffer":689,"isarray":690}],688:[function(require,module,exports){
 
 /**
  * Module dependencies.
@@ -99482,7 +98838,7 @@ function error() {
   };
 }
 
-},{"./binary":983,"./is-buffer":985,"component-emitter":64,"debug":986,"has-binary2":161}],985:[function(require,module,exports){
+},{"./binary":687,"./is-buffer":689,"component-emitter":105,"debug":122,"has-binary2":180}],689:[function(require,module,exports){
 (function (global){
 
 module.exports = isBuf;
@@ -99499,13 +98855,9 @@ function isBuf(obj) {
 }
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],986:[function(require,module,exports){
-arguments[4][141][0].apply(exports,arguments)
-},{"./debug":987,"_process":1024,"dup":141}],987:[function(require,module,exports){
-arguments[4][142][0].apply(exports,arguments)
-},{"dup":142,"ms":772}],988:[function(require,module,exports){
-arguments[4][162][0].apply(exports,arguments)
-},{"dup":162}],989:[function(require,module,exports){
+},{}],690:[function(require,module,exports){
+arguments[4][181][0].apply(exports,arguments)
+},{"dup":181}],691:[function(require,module,exports){
 'use strict'
 
 // JS treats subjects of bitwise operators as SIGNED 32 bit numbers,
@@ -99754,7 +99106,7 @@ function sortInternal (a, b) {
 function valueOnly (elem) {
   return elem[1]
 }
-},{}],990:[function(require,module,exports){
+},{}],692:[function(require,module,exports){
 //! stable.js 0.1.6, https://github.com/Two-Screen/stable
 //! © 2017 Angry Bytes and contributors. MIT licensed.
 
@@ -99867,7 +99219,7 @@ else {
 
 })();
 
-},{}],991:[function(require,module,exports){
+},{}],693:[function(require,module,exports){
 module.exports = shift
 
 function shift (stream) {
@@ -99889,7 +99241,7 @@ function getStateLength (state) {
   return state.length
 }
 
-},{}],992:[function(require,module,exports){
+},{}],694:[function(require,module,exports){
 (function (process){
 var pull = require('pull-stream/pull')
 var looper = require('looper')
@@ -100130,7 +99482,7 @@ exports.transform = function (stream) {
 
 
 }).call(this,require('_process'))
-},{"_process":1024,"looper":764,"pull-stream/pull":893}],993:[function(require,module,exports){
+},{"_process":729,"looper":506,"pull-stream/pull":601}],695:[function(require,module,exports){
 'use strict';
 
 var Buffer = require('safe-buffer').Buffer;
@@ -100403,7 +99755,7 @@ function simpleWrite(buf) {
 function simpleEnd(buf) {
   return buf && buf.length ? this.write(buf) : '';
 }
-},{"safe-buffer":948}],994:[function(require,module,exports){
+},{"safe-buffer":656}],696:[function(require,module,exports){
 var isHexPrefixed = require('is-hex-prefixed');
 
 /**
@@ -100419,7 +99771,7 @@ module.exports = function stripHexPrefix(str) {
   return isHexPrefixed(str) ? str.slice(2) : str;
 }
 
-},{"is-hex-prefixed":501}],995:[function(require,module,exports){
+},{"is-hex-prefixed":337}],697:[function(require,module,exports){
 'use strict'
 
 const throttle = require('lodash.throttle')
@@ -100478,7 +99830,7 @@ function getTimeElapsed (prevTime) {
   return Math.floor(a / 1000)
 }
 
-},{"lodash.throttle":724}],996:[function(require,module,exports){
+},{"lodash.throttle":466}],698:[function(require,module,exports){
 module.exports = toArray
 
 function toArray(list, index) {
@@ -100493,7 +99845,7 @@ function toArray(list, index) {
     return array
 }
 
-},{}],997:[function(require,module,exports){
+},{}],699:[function(require,module,exports){
 var traverse = module.exports = function (obj) {
     return new Traverse(obj);
 };
@@ -100809,7 +100161,7 @@ var hasOwnProperty = Object.hasOwnProperty || function (obj, key) {
     return key in obj;
 };
 
-},{}],998:[function(require,module,exports){
+},{}],700:[function(require,module,exports){
 (function(nacl) {
 'use strict';
 
@@ -103188,7 +102540,7 @@ nacl.setPRNG = function(fn) {
 
 })(typeof module !== 'undefined' && module.exports ? module.exports : (self.nacl = self.nacl || {}));
 
-},{"crypto":1012}],999:[function(require,module,exports){
+},{"crypto":717}],701:[function(require,module,exports){
 (function (global){
 
 /**
@@ -103259,7 +102611,100 @@ function config (name) {
 }
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],1000:[function(require,module,exports){
+},{}],702:[function(require,module,exports){
+/**
+ * Convert array of 16 byte values to UUID string format of the form:
+ * XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX
+ */
+var byteToHex = [];
+for (var i = 0; i < 256; ++i) {
+  byteToHex[i] = (i + 0x100).toString(16).substr(1);
+}
+
+function bytesToUuid(buf, offset) {
+  var i = offset || 0;
+  var bth = byteToHex;
+  return bth[buf[i++]] + bth[buf[i++]] +
+          bth[buf[i++]] + bth[buf[i++]] + '-' +
+          bth[buf[i++]] + bth[buf[i++]] + '-' +
+          bth[buf[i++]] + bth[buf[i++]] + '-' +
+          bth[buf[i++]] + bth[buf[i++]] + '-' +
+          bth[buf[i++]] + bth[buf[i++]] +
+          bth[buf[i++]] + bth[buf[i++]] +
+          bth[buf[i++]] + bth[buf[i++]];
+}
+
+module.exports = bytesToUuid;
+
+},{}],703:[function(require,module,exports){
+(function (global){
+// Unique ID creation requires a high quality random # generator.  In the
+// browser this is a little complicated due to unknown quality of Math.random()
+// and inconsistent support for the `crypto` API.  We do the best we can via
+// feature-detection
+var rng;
+
+var crypto = global.crypto || global.msCrypto; // for IE 11
+if (crypto && crypto.getRandomValues) {
+  // WHATWG crypto RNG - http://wiki.whatwg.org/wiki/Crypto
+  var rnds8 = new Uint8Array(16); // eslint-disable-line no-undef
+  rng = function whatwgRNG() {
+    crypto.getRandomValues(rnds8);
+    return rnds8;
+  };
+}
+
+if (!rng) {
+  // Math.random()-based (RNG)
+  //
+  // If all else fails, use Math.random().  It's fast, but is of unspecified
+  // quality.
+  var rnds = new Array(16);
+  rng = function() {
+    for (var i = 0, r; i < 16; i++) {
+      if ((i & 0x03) === 0) r = Math.random() * 0x100000000;
+      rnds[i] = r >>> ((i & 0x03) << 3) & 0xff;
+    }
+
+    return rnds;
+  };
+}
+
+module.exports = rng;
+
+}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
+},{}],704:[function(require,module,exports){
+var rng = require('./lib/rng');
+var bytesToUuid = require('./lib/bytesToUuid');
+
+function v4(options, buf, offset) {
+  var i = buf && offset || 0;
+
+  if (typeof(options) == 'string') {
+    buf = options == 'binary' ? new Array(16) : null;
+    options = null;
+  }
+  options = options || {};
+
+  var rnds = options.random || (options.rng || rng)();
+
+  // Per 4.4, set bits for version and `clock_seq_hi_and_reserved`
+  rnds[6] = (rnds[6] & 0x0f) | 0x40;
+  rnds[8] = (rnds[8] & 0x3f) | 0x80;
+
+  // Copy bytes to buffer, if provided
+  if (buf) {
+    for (var ii = 0; ii < 16; ++ii) {
+      buf[i + ii] = rnds[ii];
+    }
+  }
+
+  return buf || bytesToUuid(rnds);
+}
+
+module.exports = v4;
+
+},{"./lib/bytesToUuid":702,"./lib/rng":703}],705:[function(require,module,exports){
 (function (Buffer){
 'use strict'
 
@@ -103281,8 +102726,8 @@ module.exports = (buf) => {
   return result
 }
 
-}).call(this,{"isBuffer":require("../../../../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js")})
-},{"../../../../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js":1019,"varint":1003}],1001:[function(require,module,exports){
+}).call(this,{"isBuffer":require("../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js")})
+},{"../../../../../usr/lib/node_modules/browserify/node_modules/is-buffer/index.js":724,"varint":708}],706:[function(require,module,exports){
 module.exports = read
 
 var MSB = 0x80
@@ -103313,13 +102758,13 @@ function read(buf, offset) {
   return res
 }
 
-},{}],1002:[function(require,module,exports){
-arguments[4][799][0].apply(exports,arguments)
-},{"dup":799}],1003:[function(require,module,exports){
-arguments[4][800][0].apply(exports,arguments)
-},{"./decode.js":1001,"./encode.js":1002,"./length.js":1004,"dup":800}],1004:[function(require,module,exports){
-arguments[4][801][0].apply(exports,arguments)
-},{"dup":801}],1005:[function(require,module,exports){
+},{}],707:[function(require,module,exports){
+arguments[4][536][0].apply(exports,arguments)
+},{"dup":536}],708:[function(require,module,exports){
+arguments[4][537][0].apply(exports,arguments)
+},{"./decode.js":706,"./encode.js":707,"./length.js":709,"dup":537}],709:[function(require,module,exports){
+arguments[4][538][0].apply(exports,arguments)
+},{"dup":538}],710:[function(require,module,exports){
 /**
  * @file Web Cryptography API shim
  * @author Artem S Vybornov <vybornov@gmail.com>
@@ -103919,7 +103364,7 @@ module.exports = function webcryptoShim (global) {
     }
 }
 
-},{}],1006:[function(require,module,exports){
+},{}],711:[function(require,module,exports){
 /* global self */
 
 // created by @HenrikJoreteg
@@ -103968,7 +103413,7 @@ module.exports = {
   getUserMedia: getUserMedia
 }
 
-},{}],1007:[function(require,module,exports){
+},{}],712:[function(require,module,exports){
 // Returns a wrapper function that returns a wrapped callback
 // The wrapper function should do some stuff, and return a
 // presumably different callback function.
@@ -104003,7 +103448,7 @@ function wrappy (fn, cb) {
   }
 }
 
-},{}],1008:[function(require,module,exports){
+},{}],713:[function(require,module,exports){
 module.exports = extend
 
 var hasOwnProperty = Object.prototype.hasOwnProperty;
@@ -104024,7 +103469,7 @@ function extend() {
     return target
 }
 
-},{}],1009:[function(require,module,exports){
+},{}],714:[function(require,module,exports){
 'use strict';
 
 var alphabet = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-_'.split('')
@@ -104094,7 +103539,7 @@ yeast.encode = encode;
 yeast.decode = decode;
 module.exports = yeast;
 
-},{}],1010:[function(require,module,exports){
+},{}],715:[function(require,module,exports){
 (function (global){
 'use strict';
 
@@ -104588,7 +104033,7 @@ var objectKeys = Object.keys || function (obj) {
 };
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"util/":1050}],1011:[function(require,module,exports){
+},{"util/":755}],716:[function(require,module,exports){
 'use strict'
 
 exports.byteLength = byteLength
@@ -104704,9 +104149,9 @@ function fromByteArray (uint8) {
   return parts.join('')
 }
 
-},{}],1012:[function(require,module,exports){
+},{}],717:[function(require,module,exports){
 
-},{}],1013:[function(require,module,exports){
+},{}],718:[function(require,module,exports){
 /*!
  * The buffer module from node.js, for the browser.
  *
@@ -106422,7 +105867,7 @@ function numberIsNaN (obj) {
   return obj !== obj // eslint-disable-line no-self-compare
 }
 
-},{"base64-js":1011,"ieee754":1016}],1014:[function(require,module,exports){
+},{"base64-js":716,"ieee754":721}],719:[function(require,module,exports){
 (function (Buffer){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -106533,7 +105978,7 @@ function objectToString(o) {
 }
 
 }).call(this,{"isBuffer":require("../../is-buffer/index.js")})
-},{"../../is-buffer/index.js":1019}],1015:[function(require,module,exports){
+},{"../../is-buffer/index.js":724}],720:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -106837,13 +106282,13 @@ function isUndefined(arg) {
   return arg === void 0;
 }
 
-},{}],1016:[function(require,module,exports){
-arguments[4][179][0].apply(exports,arguments)
-},{"dup":179}],1017:[function(require,module,exports){
-arguments[4][180][0].apply(exports,arguments)
-},{"dup":180}],1018:[function(require,module,exports){
-arguments[4][181][0].apply(exports,arguments)
-},{"dup":181}],1019:[function(require,module,exports){
+},{}],721:[function(require,module,exports){
+arguments[4][198][0].apply(exports,arguments)
+},{"dup":198}],722:[function(require,module,exports){
+arguments[4][199][0].apply(exports,arguments)
+},{"dup":199}],723:[function(require,module,exports){
+arguments[4][200][0].apply(exports,arguments)
+},{"dup":200}],724:[function(require,module,exports){
 /*!
  * Determine if an object is a Buffer
  *
@@ -106866,9 +106311,9 @@ function isSlowBuffer (obj) {
   return typeof obj.readFloatLE === 'function' && typeof obj.slice === 'function' && isBuffer(obj.slice(0, 0))
 }
 
-},{}],1020:[function(require,module,exports){
-arguments[4][162][0].apply(exports,arguments)
-},{"dup":162}],1021:[function(require,module,exports){
+},{}],725:[function(require,module,exports){
+arguments[4][181][0].apply(exports,arguments)
+},{"dup":181}],726:[function(require,module,exports){
 exports.endianness = function () { return 'LE' };
 
 exports.hostname = function () {
@@ -106915,7 +106360,7 @@ exports.tmpdir = exports.tmpDir = function () {
 
 exports.EOL = '\n';
 
-},{}],1022:[function(require,module,exports){
+},{}],727:[function(require,module,exports){
 (function (process){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -107143,9 +106588,9 @@ var substr = 'ab'.substr(-1) === 'b'
 ;
 
 }).call(this,require('_process'))
-},{"_process":1024}],1023:[function(require,module,exports){
-arguments[4][853][0].apply(exports,arguments)
-},{"_process":1024,"dup":853}],1024:[function(require,module,exports){
+},{"_process":729}],728:[function(require,module,exports){
+arguments[4][562][0].apply(exports,arguments)
+},{"_process":729,"dup":562}],729:[function(require,module,exports){
 // shim for using process in browser
 var process = module.exports = {};
 
@@ -107331,7 +106776,7 @@ process.chdir = function (dir) {
 };
 process.umask = function() { return 0; };
 
-},{}],1025:[function(require,module,exports){
+},{}],730:[function(require,module,exports){
 (function (global){
 /*! https://mths.be/punycode v1.4.1 by @mathias */
 ;(function(root) {
@@ -107868,7 +107313,7 @@ process.umask = function() { return 0; };
 }(this));
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],1026:[function(require,module,exports){
+},{}],731:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -107954,7 +107399,7 @@ var isArray = Array.isArray || function (xs) {
   return Object.prototype.toString.call(xs) === '[object Array]';
 };
 
-},{}],1027:[function(require,module,exports){
+},{}],732:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -108041,45 +107486,45 @@ var objectKeys = Object.keys || function (obj) {
   return res;
 };
 
-},{}],1028:[function(require,module,exports){
+},{}],733:[function(require,module,exports){
 'use strict';
 
 exports.decode = exports.parse = require('./decode');
 exports.encode = exports.stringify = require('./encode');
 
-},{"./decode":1026,"./encode":1027}],1029:[function(require,module,exports){
+},{"./decode":731,"./encode":732}],734:[function(require,module,exports){
 module.exports = require('./lib/_stream_duplex.js');
 
-},{"./lib/_stream_duplex.js":1030}],1030:[function(require,module,exports){
-arguments[4][936][0].apply(exports,arguments)
-},{"./_stream_readable":1032,"./_stream_writable":1034,"core-util-is":1014,"dup":936,"inherits":1018,"process-nextick-args":1023}],1031:[function(require,module,exports){
-arguments[4][937][0].apply(exports,arguments)
-},{"./_stream_transform":1033,"core-util-is":1014,"dup":937,"inherits":1018}],1032:[function(require,module,exports){
-arguments[4][938][0].apply(exports,arguments)
-},{"./_stream_duplex":1030,"./internal/streams/BufferList":1035,"./internal/streams/destroy":1036,"./internal/streams/stream":1037,"_process":1024,"core-util-is":1014,"dup":938,"events":1015,"inherits":1018,"isarray":1020,"process-nextick-args":1023,"safe-buffer":1042,"string_decoder/":1044,"util":1012}],1033:[function(require,module,exports){
-arguments[4][939][0].apply(exports,arguments)
-},{"./_stream_duplex":1030,"core-util-is":1014,"dup":939,"inherits":1018}],1034:[function(require,module,exports){
-arguments[4][940][0].apply(exports,arguments)
-},{"./_stream_duplex":1030,"./internal/streams/destroy":1036,"./internal/streams/stream":1037,"_process":1024,"core-util-is":1014,"dup":940,"inherits":1018,"process-nextick-args":1023,"safe-buffer":1042,"util-deprecate":1047}],1035:[function(require,module,exports){
-arguments[4][941][0].apply(exports,arguments)
-},{"dup":941,"safe-buffer":1042}],1036:[function(require,module,exports){
-arguments[4][942][0].apply(exports,arguments)
-},{"dup":942,"process-nextick-args":1023}],1037:[function(require,module,exports){
-arguments[4][943][0].apply(exports,arguments)
-},{"dup":943,"events":1015}],1038:[function(require,module,exports){
+},{"./lib/_stream_duplex.js":735}],735:[function(require,module,exports){
+arguments[4][644][0].apply(exports,arguments)
+},{"./_stream_readable":737,"./_stream_writable":739,"core-util-is":719,"dup":644,"inherits":723,"process-nextick-args":728}],736:[function(require,module,exports){
+arguments[4][645][0].apply(exports,arguments)
+},{"./_stream_transform":738,"core-util-is":719,"dup":645,"inherits":723}],737:[function(require,module,exports){
+arguments[4][646][0].apply(exports,arguments)
+},{"./_stream_duplex":735,"./internal/streams/BufferList":740,"./internal/streams/destroy":741,"./internal/streams/stream":742,"_process":729,"core-util-is":719,"dup":646,"events":720,"inherits":723,"isarray":725,"process-nextick-args":728,"safe-buffer":747,"string_decoder/":749,"util":717}],738:[function(require,module,exports){
+arguments[4][647][0].apply(exports,arguments)
+},{"./_stream_duplex":735,"core-util-is":719,"dup":647,"inherits":723}],739:[function(require,module,exports){
+arguments[4][648][0].apply(exports,arguments)
+},{"./_stream_duplex":735,"./internal/streams/destroy":741,"./internal/streams/stream":742,"_process":729,"core-util-is":719,"dup":648,"inherits":723,"process-nextick-args":728,"safe-buffer":747,"util-deprecate":752}],740:[function(require,module,exports){
+arguments[4][649][0].apply(exports,arguments)
+},{"dup":649,"safe-buffer":747}],741:[function(require,module,exports){
+arguments[4][650][0].apply(exports,arguments)
+},{"dup":650,"process-nextick-args":728}],742:[function(require,module,exports){
+arguments[4][651][0].apply(exports,arguments)
+},{"dup":651,"events":720}],743:[function(require,module,exports){
 module.exports = require('./readable').PassThrough
 
-},{"./readable":1039}],1039:[function(require,module,exports){
-arguments[4][944][0].apply(exports,arguments)
-},{"./lib/_stream_duplex.js":1030,"./lib/_stream_passthrough.js":1031,"./lib/_stream_readable.js":1032,"./lib/_stream_transform.js":1033,"./lib/_stream_writable.js":1034,"dup":944}],1040:[function(require,module,exports){
+},{"./readable":744}],744:[function(require,module,exports){
+arguments[4][652][0].apply(exports,arguments)
+},{"./lib/_stream_duplex.js":735,"./lib/_stream_passthrough.js":736,"./lib/_stream_readable.js":737,"./lib/_stream_transform.js":738,"./lib/_stream_writable.js":739,"dup":652}],745:[function(require,module,exports){
 module.exports = require('./readable').Transform
 
-},{"./readable":1039}],1041:[function(require,module,exports){
+},{"./readable":744}],746:[function(require,module,exports){
 module.exports = require('./lib/_stream_writable.js');
 
-},{"./lib/_stream_writable.js":1034}],1042:[function(require,module,exports){
-arguments[4][948][0].apply(exports,arguments)
-},{"buffer":1013,"dup":948}],1043:[function(require,module,exports){
+},{"./lib/_stream_writable.js":739}],747:[function(require,module,exports){
+arguments[4][656][0].apply(exports,arguments)
+},{"buffer":718,"dup":656}],748:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -108208,9 +107653,9 @@ Stream.prototype.pipe = function(dest, options) {
   return dest;
 };
 
-},{"events":1015,"inherits":1018,"readable-stream/duplex.js":1029,"readable-stream/passthrough.js":1038,"readable-stream/readable.js":1039,"readable-stream/transform.js":1040,"readable-stream/writable.js":1041}],1044:[function(require,module,exports){
-arguments[4][993][0].apply(exports,arguments)
-},{"dup":993,"safe-buffer":1042}],1045:[function(require,module,exports){
+},{"events":720,"inherits":723,"readable-stream/duplex.js":734,"readable-stream/passthrough.js":743,"readable-stream/readable.js":744,"readable-stream/transform.js":745,"readable-stream/writable.js":746}],749:[function(require,module,exports){
+arguments[4][695][0].apply(exports,arguments)
+},{"dup":695,"safe-buffer":747}],750:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -108944,7 +108389,7 @@ Url.prototype.parseHost = function() {
   if (host) this.hostname = host;
 };
 
-},{"./util":1046,"punycode":1025,"querystring":1028}],1046:[function(require,module,exports){
+},{"./util":751,"punycode":730,"querystring":733}],751:[function(require,module,exports){
 'use strict';
 
 module.exports = {
@@ -108962,18 +108407,18 @@ module.exports = {
   }
 };
 
-},{}],1047:[function(require,module,exports){
-arguments[4][999][0].apply(exports,arguments)
-},{"dup":999}],1048:[function(require,module,exports){
-arguments[4][181][0].apply(exports,arguments)
-},{"dup":181}],1049:[function(require,module,exports){
+},{}],752:[function(require,module,exports){
+arguments[4][701][0].apply(exports,arguments)
+},{"dup":701}],753:[function(require,module,exports){
+arguments[4][200][0].apply(exports,arguments)
+},{"dup":200}],754:[function(require,module,exports){
 module.exports = function isBuffer(arg) {
   return arg && typeof arg === 'object'
     && typeof arg.copy === 'function'
     && typeof arg.fill === 'function'
     && typeof arg.readUInt8 === 'function';
 }
-},{}],1050:[function(require,module,exports){
+},{}],755:[function(require,module,exports){
 (function (process,global){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -109563,7 +109008,7 @@ function hasOwnProperty(obj, prop) {
 }
 
 }).call(this,require('_process'),typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./support/isBuffer":1049,"_process":1024,"inherits":1048}],1051:[function(require,module,exports){
+},{"./support/isBuffer":754,"_process":729,"inherits":753}],756:[function(require,module,exports){
 var indexOf = require('indexof');
 
 var Object_keys = function (obj) {
@@ -109703,4 +109148,4 @@ exports.createContext = Script.createContext = function (context) {
     return copy;
 };
 
-},{"indexof":1017}]},{},[1]);
+},{"indexof":722}]},{},[1]);
