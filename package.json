@@ -1,0 +1,27 @@
+{
+  "name": "ipfs-chat",
+  "version": "1.0.0",
+  "description": "",
+  "main": "app.js",
+  "dependencies": {
+    "electron-webrtc": "^0.3.0",
+    "ipfs": "^0.26.0",
+    "libp2p-webrtc-star": "^0.13.2",
+    "simple-peer": "^8.1.1"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "browserify ipfs.js -o app.js && cp app.js public/app.js && cp index.html public/index.html && ipfs add -r public/"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vipulbhatia/ipfs-chat.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/vipulbhatia/ipfs-chat/issues"
+  },
+  "homepage": "https://github.com/vipulbhatia/ipfs-chat#readme"
+}
