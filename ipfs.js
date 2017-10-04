@@ -8,13 +8,13 @@ function repo () {
 
 var ipfs = new IPFS({
 	repo: repo(),
-    config: { // overload the default IPFS node config
+    /*config: { // overload the default IPFS node config
     Addresses: {
       Swarm: [
         '/dns4/star-signal.cloud.ipfs.team/wss/p2p-webrtc-star/'
       ]
     }
-  },
+  },*/
 	EXPERIMENTAL: {
 		pubsub: true
 	}
@@ -46,7 +46,7 @@ ipfs.on('ready', () => ipfs.id((err, info) => {
     //ipfs.pubsub.publish('room', new Buffer('hi'), (err) => console.error(err));
     //navigator.getUserMedia({ video: false, audio: true }, (stream) => {  
     //    console.log('got stream');
-        peer = SimplePeer.WEBRTC_SUPPORT ? new SimplePeer({ initiator: true, trickle: false }) : new SimplePeer({ initiator: process.argv[2] === 'true', trickle: false, wrtc: wrtc });
+        peer = SimplePeer.WEBRTC_SUPPORT ? new SimplePeer({ initiator: location.hash === '#1', trickle: false }) : new SimplePeer({ initiator: process.argv[2] === 'true', trickle: false, wrtc: wrtc });
         peer.on('error', function (err) { console.log('error', err) });
 
         peer.on('close', function () { console.log('connection closed...') });
@@ -92,4 +92,20 @@ send = (ev) => {
 			peer.send(ev.target.value);
 		} else console.log('not connected...');
 	}
+}
+
+loadFile = (evt) => {
+    console.log(evt);
+    var reader = new FileReader(),
+        file = evt.target.files[0],
+        chunk = 16000,
+        read = 0;
+    reader.readAsArrayBuffer(file.slice(read, chunk));
+    reader.onload = function(e) {
+        console.log('loading file...', e, read, chunk);
+        peer.send(e.target.result);
+        read += chunk;
+        if(read < file.size) reader.readAsArrayBuffer(file.slice(read, chunk));
+        else console.log('loaded...');
+    };
 }

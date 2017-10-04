@@ -12,7 +12,8 @@
   "devDependencies": {},
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "build": "browserify ipfs.js -o app.js && cp app.js public/app.js && cp index.html public/index.html && ipfs add -r public/"
+    "build": "browserify ipfs.js -o app.js && cp app.js public/app.js && cp index.html public/index.html && ipfs add -r public/",
+    "compile": "browserify ipfs.js -o app.js && cp app.js public/app.js && cp index.html public/index.html"
   },
   "repository": {
     "type": "git",
